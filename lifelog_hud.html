@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LIFELOG</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0a0a0b;
+      --surface: #111113;
+      --surface2: #1a1a1e;
+      --surface3: #222228;
+      --border: rgba(255, 255, 255, 0.07);
+      --border2: rgba(255, 255, 255, 0.12);
+      --text: #e8e8ea;
+      --muted: #666672;
+      --accent: #7c6aff;
+      --accent2: #4ecdc4;
+      --dim: #3a3a44;
+      --red: #ff5c5c;
+      --amber: #f0a500;
+      --green: #4ade80;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Space Grotesk', sans-serif;
+    }
+
+    html,
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .hud {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px 16px 32px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 12px;
+      border-bottom: 0.5px solid var(--border2);
+    }
+
+    .header-left {}
+
+    .sys-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .timestamp {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .date-line {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 4px;
+      letter-spacing: 0.05em;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s infinite;
+      margin-top: 4px;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    /* SECTION LABEL */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    /* CATEGORY TILES */
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .cat-tile {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cat-tile::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--tile-color, transparent);
+      transition: opacity 0.15s;
+      opacity: 0;
+    }
+
+    .cat-tile.selected::before {
+      opacity: 1;
+    }
+
+    .cat-tile:active {
+      transform: scale(0.96);
+    }
+
+    .cat-tile.selected {
+      background: var(--surface2);
+      border-color: var(--tile-color, var(--border2));
+      border-width: 1px;
+    }
+
+    .cat-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .cat-name {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      text-transform: uppercase;
+      text-align: center;
+      transition: color 0.15s;
+    }
+
+    .cat-tile.selected .cat-name {
+      color: var(--tile-color, var(--text));
+    }
+
+    /* SUBTAGS */
+    .subtag-container {
+      min-height: 0;
+      overflow: hidden;
+      transition: all 0.25s ease;
+    }
+
+    .subtag-container.hidden {
+      display: none;
+    }
+
+    .subtag-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .subtag {
+      background: var(--surface2);
+      border: 0.5px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.12s ease;
+      letter-spacing: 0.05em;
+    }
+
+    .subtag:active {
+      transform: scale(0.95);
+    }
+
+    .subtag.selected {
+      border-color: var(--subtag-color, var(--accent));
+      color: var(--subtag-color, var(--accent));
+      background: var(--surface3);
+    }
+
+    /* ENERGY */
+    .energy-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .energy-btn {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .energy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .energy-btn.selected {
+      background: var(--surface2);
+      border-color: var(--border2);
+    }
+
+    .energy-bar-group {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 16px;
+    }
+
+    .energy-bar-group span {
+      width: 3px;
+      background: var(--dim);
+      border-radius: 1px;
+      transition: background 0.15s;
+    }
+
+    .energy-btn.selected .energy-bar-group span.lit {
+      background: var(--energy-color, var(--accent));
+    }
+
+    .energy-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .energy-btn.selected .energy-label {
+      color: var(--text);
+    }
+
+    /* LOCATION */
+    .location-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .loc-btn {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .loc-btn:active {
+      transform: scale(0.95);
+    }
+
+    .loc-btn.selected {
+      background: var(--surface2);
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    /* TAG INPUT */
+    .tag-input-wrap {
+      position: relative;
+    }
+
+    .tag-input {
+      width: 100%;
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      letter-spacing: 0.03em;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .tag-input::placeholder {
+      color: var(--muted);
+    }
+
+    .tag-input:focus {
+      border-color: var(--border2);
+    }
+
+    /* DIVIDER */
+    .divider {
+      height: 0.5px;
+      background: var(--border);
+    }
+
+    /* SUBMIT */
+    .submit-btn {
+      width: 100%;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      padding: 15px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: #fff;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .submit-btn:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* BOTTOM META */
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .streak-info {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    .streak-info span {
+      color: var(--amber);
+    }
+
+    /* SUCCESS STATE */
+    .success-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    .success-overlay.show {
+      display: flex;
+    }
+
+    .success-icon {
+      font-size: 48px;
+    }
+
+    .success-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .success-entry {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      max-width: 300px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* Scanline texture */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px);
+      pointer-events: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="hud" id="mainHUD">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <div class="sys-label">Lifelog OS // Entry</div>
+        <div class="timestamp" id="clock">--:--</div>
+        <div class="date-line" id="dateline">--- -- ----</div>
+      </div>
+      <div class="status-dot"></div>
+    </div>
+
+    <!-- CATEGORY -->
+    <div>
+      <div class="section-label">// What are you in</div>
+      <div class="category-grid" id="catGrid">
+        <div class="cat-tile" data-cat="Build" style="--tile-color: #7c6aff" onclick="selectCat(this)">
+          <span class="cat-icon">🏗️</span>
+          <span class="cat-name">Build</span>
+        </div>
+        <div class="cat-tile" data-cat="Think" style="--tile-color: #4ecdc4" onclick="selectCat(this)">
+          <span class="cat-icon">🧠</span>
+          <span class="cat-name">Think</span>
+        </div>
+        <div class="cat-tile" data-cat="Connect" style="--tile-color: #ff6b9d" onclick="selectCat(this)">
+          <span class="cat-icon">❤️</span>
+          <span class="cat-name">Connect</span>
+        </div>
+        <div class="cat-tile" data-cat="Maintain" style="--tile-color: #f0a500" onclick="selectCat(this)">
+          <span class="cat-icon">⚙️</span>
+          <span class="cat-name">Maintain</span>
+        </div>
+        <div class="cat-tile" data-cat="Restore" style="--tile-color: #4ade80" onclick="selectCat(this)">
+          <span class="cat-icon">🔋</span>
+          <span class="cat-name">Restore</span>
+        </div>
+        <div class="cat-tile" data-cat="Drift" style="--tile-color: #666672" onclick="selectCat(this)">
+          <span class="cat-icon">🌫️</span>
+          <span class="cat-name">Drift</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBTAGS -->
+    <div class="subtag-container hidden" id="subtagArea">
+      <div class="section-label">// Specifically</div>
+      <div class="subtag-grid" id="subtagGrid"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- ENERGY -->
+    <div>
+      <div class="section-label">// Engine level</div>
+      <div class="energy-row" id="energyRow">
+        <div class="energy-btn" data-val="Low" style="--energy-color:#ff5c5c" onclick="selectEnergy(this)">
+          <div class="energy-bar-group">
+            <span class="lit" style="height:5px"></span>
+            <span style="height:9px"></span>
+            <span style="height:13px"></span>
+            <span style="height:16px"></span>
+          </div>
+          <div class="energy-label">Low</div>
+        </div>
+        <div class="energy-btn" data-val="Medium" style="--energy-color:#f0a500" onclick="selectEnergy(this)">
+          <div class="energy-bar-group">
+            <span class="lit" style="height:5px"></span>
+            <span class="lit" style="height:9px"></span>
+            <span style="height:13px"></span>
+            <span style="height:16px"></span>
+          </div>
+          <div class="energy-label">Mid</div>
+        </div>
+        <div class="energy-btn" data-val="High" style="--energy-color:#4ecdc4" onclick="selectEnergy(this)">
+          <div class="energy-bar-group">
+            <span class="lit" style="height:5px"></span>
+            <span class="lit" style="height:9px"></span>
+            <span class="lit" style="height:13px"></span>
+            <span style="height:16px"></span>
+          </div>
+          <div class="energy-label">High</div>
+        </div>
+        <div class="energy-btn" data-val="Peak" style="--energy-color:#7c6aff" onclick="selectEnergy(this)">
+          <div class="energy-bar-group">
+            <span class="lit" style="height:5px"></span>
+            <span class="lit" style="height:9px"></span>
+            <span class="lit" style="height:13px"></span>
+            <span class="lit" style="height:16px"></span>
+          </div>
+          <div class="energy-label">Peak</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOCATION -->
+    <div>
+      <div class="section-label">// Where</div>
+      <div class="location-row" id="locRow">
+        <div class="loc-btn" data-loc="Home" onclick="selectLoc(this)">Home</div>
+        <div class="loc-btn" data-loc="Office" onclick="selectLoc(this)">Office</div>
+        <div class="loc-btn" data-loc="Transit" onclick="selectLoc(this)">Transit</div>
+        <div class="loc-btn" data-loc="Outside" onclick="selectLoc(this)">Outside</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- TAG -->
+    <div class="tag-input-wrap">
+      <input class="tag-input" id="tagInput" type="text" placeholder="Optional tag — 2-3 words max" maxlength="40"
+        autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+
+    <!-- SUBMIT -->
+    <button class="submit-btn" id="submitBtn" onclick="submitEntry()" disabled>
+      Log Entry ↗
+    </button>
+
+    <!-- META -->
+    <div class="meta-row">
+      <div class="streak-info">Last logged: <span id="lastLogged">—</span></div>
+      <div class="streak-info" id="coverageInfo">Coverage: <span>—</span></div>
+    </div>
+
+  </div>
+
+  <!-- SUCCESS -->
+  <div class="success-overlay" id="successOverlay">
+    <div class="success-icon">✦</div>
+    <div class="success-text">Entry logged</div>
+    <div class="success-entry" id="successEntry"></div>
+  </div>
+
+  <script>
+    const SUBTAGS = {
+      Build: { color: '#7c6aff', tags: ['Client Work', 'CAD', 'Coding', 'VBA', 'Admin', 'Planning'] },
+      Think: { color: '#4ecdc4', tags: ['Reading', 'Research', 'Journaling', 'Strategy', 'Learning'] },
+      Connect: { color: '#ff6b9d', tags: ['Her', 'Family', 'Friends', 'Call', 'In Person'] },
+      Maintain: { color: '#f0a500', tags: ['Eating', 'Gym', 'Grooming', 'Commute', 'Errands', 'Health'] },
+      Restore: { color: '#4ade80', tags: ['Sleep', 'Nap', 'Rest', 'Recovery'] },
+      Drift: { color: '#666672', tags: ['Scrolling', 'Binging', 'Zoning Out'] }
+    };
+
+    const SHEET_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwFqIJ-ZKnaBJjV5_QW7rXvo3N3X4LqYSF0V5vb0kVN_EhV6Fdx10WbANdz21x3PMSJ/exec';
+
+    let state = { cat: null, subtag: null, energy: null, loc: null };
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      document.getElementById('dateline').textContent =
+        days[now.getDay()] + ' ' + pad(now.getDate()) + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
+    }
+    updateClock();
+    setInterval(updateClock, 30000);
+
+    function selectCat(el) {
+      document.querySelectorAll('.cat-tile').forEach(t => t.classList.remove('selected'));
+      el.classList.add('selected');
+      state.cat = el.dataset.cat;
+      state.subtag = null;
+
+      const area = document.getElementById('subtagArea');
+      const grid = document.getElementById('subtagGrid');
+      const data = SUBTAGS[state.cat];
+      grid.innerHTML = '';
+      area.classList.remove('hidden');
+      data.tags.forEach(tag => {
+        const div = document.createElement('div');
+        div.className = 'subtag';
+        div.style = `--subtag-color: ${data.color}`;
+        div.textContent = tag;
+        div.onclick = () => selectSubtag(div, tag);
+        grid.appendChild(div);
+      });
+      checkSubmit();
+    }
+
+    function selectSubtag(el, tag) {
+      document.querySelectorAll('.subtag').forEach(t => t.classList.remove('selected'));
+      el.classList.add('selected');
+      state.subtag = tag;
+      checkSubmit();
+    }
+
+    function selectEnergy(el) {
+      document.querySelectorAll('.energy-btn').forEach(b => b.classList.remove('selected'));
+      el.classList.add('selected');
+      state.energy = el.dataset.val;
+      checkSubmit();
+    }
+
+    function selectLoc(el) {
+      document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('selected'));
+      el.classList.add('selected');
+      state.loc = el.dataset.loc;
+      checkSubmit();
+    }
+
+    function checkSubmit() {
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = !(state.cat && state.energy && state.loc);
+    }
+
+    function getTimestamp() {
+      const now = new Date();
+      return now.getFullYear() + '-' +
+        pad(now.getMonth() + 1) + '-' +
+        pad(now.getDate()) + ' ' +
+        pad(now.getHours()) + ':' +
+        pad(now.getMinutes());
+    }
+
+    async function submitEntry() {
+      const tag = document.getElementById('tagInput').value.trim();
+      const entry = {
+        timestamp: getTimestamp(),
+        category: state.cat,
+        subtag: state.subtag || '',
+        energy: state.energy,
+        location: state.loc,
+        note: tag
+      };
+
+      const successEntry = document.getElementById('successEntry');
+      successEntry.textContent =
+        entry.timestamp + '\n' +
+        entry.category.toUpperCase() +
+        (entry.subtag ? ' → ' + entry.subtag : '') +
+        ' · ' + entry.energy + ' · ' + entry.location +
+        (entry.note ? '\n' + entry.note : '');
+
+      document.getElementById('successOverlay').classList.add('show');
+
+      try {
+        await fetch(SHEET_WEBHOOK, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry)
+        });
+      } catch (e) { console.log('Webhook error:', e); }
+
+      localStorage.setItem('lastLogged', entry.timestamp);
+      updateMeta();
+
+      setTimeout(() => {
+        document.getElementById('successOverlay').classList.remove('show');
+        resetForm();
+      }, 2200);
+    }
+
+    function resetForm() {
+      state = { cat: null, subtag: null, energy: null, loc: null };
+      document.querySelectorAll('.cat-tile, .energy-btn, .loc-btn').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('.subtag').forEach(el => el.classList.remove('selected'));
+      document.getElementById('subtagArea').classList.add('hidden');
+      document.getElementById('tagInput').value = '';
+      document.getElementById('submitBtn').disabled = true;
+    }
+
+    function updateMeta() {
+      const last = localStorage.getItem('lastLogged');
+      if (last) {
+        const el = document.getElementById('lastLogged');
+        const diff = Math.round((Date.now() - new Date(last).getTime()) / 60000);
+        el.textContent = diff < 2 ? 'just now' : diff + 'm ago';
+      }
+    }
+    updateMeta();
+    setInterval(updateMeta, 60000);
+  </script>
+</body>
+
+</html>
