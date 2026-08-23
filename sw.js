@@ -6,10 +6,12 @@
  * scheduled local ones (the Notification Triggers API never shipped past origin trial,
  * and Web Push requires a server to initiate). MacroDroid owns pings. See SPEC.md.
  *
- * Bump CACHE whenever the shell file list changes.
+ * Bump CACHE when the shell file list changes, or when a shell update must land
+ * deterministically rather than via stale-while-revalidate — e.g. alongside a backend
+ * or data-contract change, so the HUD and the server flip together on the next open.
  */
 
-var CACHE = 'lifelog-v1';
+var CACHE = 'lifelog-v2';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {

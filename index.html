@@ -4,14 +4,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0a0a0b">
+  <meta name="theme-color" content="#0a0a0b" id="themeColor">
   <title>Lifelog</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <!--
-    No external fonts, no CDN, no framework. Every byte this page needs is either
-    inline or one of the files the service worker caches, so it opens instantly and
-    works with no signal. See SPEC.md for why the screen is this short.
+    No external fonts, no CDN, no framework. Every byte is inline or cached by the
+    service worker, so this opens instantly and works with no signal. See SPEC.md.
+
+    Type carries the personality with no webfont: everything the CLOCK touches is mono
+    (hours, the rail, the status line, timestamps) and everything YOU write is sans.
+    Machine time vs human voice, encoded in the typography instead of decorated on.
   -->
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,6 +34,22 @@
       --sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
     }
 
+    /* Light theme is a ledger card, not an inversion: cool paper and ink, with the three
+       buckets darkened to hold their contrast on near-white. Drifted stays grey in both
+       themes — that rule is philosophy, not palette. */
+    [data-theme="light"] {
+      --bg: #f6f7f5;
+      --surface: #ffffff;
+      --surface2: #eef0ec;
+      --border: rgba(0, 0, 0, 0.10);
+      --border2: rgba(0, 0, 0, 0.24);
+      --text: #17181a;
+      --muted: #6a7078;
+      --needed: #0f7a52;
+      --wanted: #a4650a;
+      --drifted: #5d646e;
+    }
+
     html, body {
       height: 100%;
       background: var(--bg);
@@ -43,134 +62,120 @@
     body {
       display: flex;
       flex-direction: column;
-      padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+      padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
       max-width: 560px;
       margin: 0 auto;
     }
 
     .hide { display: none !important; }
 
-    /* Capture is a flex column so .spacer can push the send button to the bottom.
-       .hide uses !important so it still wins over this. #setup's own rule is below. */
     #capture { display: flex; flex-direction: column; flex: 1 1 auto; }
 
     /* ---------- header ---------- */
 
-    header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    header { display: flex; align-items: center; gap: 8px; }
 
-    #hour {
-      font-family: var(--mono);
-      font-size: 15px;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      transition: color .15s;
-    }
-    #hour.locked { color: var(--text); }
+    /* the stepper is the hero: a block of time you are accounting for, and the two
+       arrows that walk it. mono, because it is the clock talking. */
+    .stepper { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
 
-    #cfgBtn {
-      background: none; border: 0; color: var(--muted);
-      font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
-      padding: 4px; cursor: pointer;
+    .step {
+      appearance: none; flex: 0 0 auto;
+      width: 40px; height: 40px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 11px; color: var(--text);
+      font-family: var(--mono); font-size: 16px; line-height: 1;
+      cursor: pointer; transition: border-color .12s, opacity .12s;
     }
+    .step:disabled { opacity: .25; cursor: default; }
+
+    #block {
+      flex: 1 1 auto; text-align: center;
+      font-family: var(--mono); font-weight: 600;
+      font-size: 16px; letter-spacing: .04em;
+      color: var(--text);
+    }
+    #blockDate {
+      display: block;
+      font-size: 10px; font-weight: 500; letter-spacing: .16em;
+      color: var(--muted); margin-bottom: 2px;
+    }
+    #block.adjusted #blockDate::after { content: " · EDITED"; color: var(--wanted); }
+
+    .iconbtn {
+      appearance: none; flex: 0 0 auto;
+      width: 40px; height: 40px;
+      background: none; border: 1px solid transparent;
+      border-radius: 11px; color: var(--muted);
+      font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+      cursor: pointer; transition: color .12s, border-color .12s;
+    }
+    .iconbtn:hover { color: var(--text); }
 
     #sub {
       font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: .06em;
-      color: var(--muted);
-      min-height: 15px;
-      margin-top: 4px;
+      font-size: 11px; letter-spacing: .06em;
+      color: var(--muted); min-height: 15px; margin-top: 10px;
     }
+    #sub.warn { color: var(--wanted); }
 
     /* ---------- buckets ---------- */
 
-    .buckets { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .buckets { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
 
     .bucket {
       appearance: none;
       display: flex; align-items: center; gap: 14px;
-      min-height: 68px;
-      padding: 0 18px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 19px;
-      font-weight: 500;
-      text-align: left;
-      cursor: pointer;
+      min-height: 66px; padding: 0 18px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; color: var(--text);
+      font-family: var(--sans); font-size: 19px; font-weight: 500;
+      text-align: left; cursor: pointer;
       transition: border-color .12s, background .12s;
     }
-
     .bucket .dot {
       width: 10px; height: 10px; border-radius: 50%;
-      background: var(--c);
-      flex: 0 0 auto;
-      transition: box-shadow .12s;
+      background: var(--c); flex: 0 0 auto; transition: box-shadow .12s;
     }
-
     .bucket .why {
-      margin-left: auto;
-      font-family: var(--mono);
-      font-size: 10.5px;
-      letter-spacing: .03em;
-      color: var(--muted);
-      text-align: right;
-      max-width: 48%;
-      line-height: 1.4;
-      transition: color .12s;
+      margin-left: auto; font-family: var(--mono);
+      font-size: 10.5px; letter-spacing: .03em; color: var(--muted);
+      text-align: right; max-width: 48%; line-height: 1.4; transition: color .12s;
     }
-
     .bucket[aria-pressed="true"] { background: var(--surface2); border-color: var(--c); }
-    .bucket[aria-pressed="true"] .dot { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.06); }
+    .bucket[aria-pressed="true"] .dot { box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 22%, transparent); }
     .bucket[aria-pressed="true"] .why { color: var(--c); }
 
-    #bNeeded  { --c: #5fd0a0; }
-    #bWanted  { --c: #e8a33d; }
-    #bDrifted { --c: #7f8794; }
+    #bNeeded  { --c: var(--needed); }
+    #bWanted  { --c: var(--wanted); }
+    #bDrifted { --c: var(--drifted); }
 
     /* ---------- sentence ---------- */
 
     #sentence {
-      width: 100%;
-      min-height: 100px;
-      resize: none;
-      margin-top: 12px;
-      padding: 14px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 16px;      /* below 16px and the browser zooms on focus */
-      line-height: 1.5;
+      width: 100%; min-height: 96px; resize: none;
+      margin-top: 12px; padding: 14px 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; color: var(--text);
+      font-family: var(--sans); font-size: 16px; line-height: 1.5;
     }
     #sentence::placeholder { color: var(--muted); }
     #sentence:focus { outline: none; border-color: var(--border2); }
 
-    /* ---------- day start tick ---------- */
+    /* ---------- day start ---------- */
 
     #dayStartRow {
       display: flex; align-items: center; gap: 12px;
-      margin-top: 10px;
-      padding: 13px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      cursor: pointer;
-      user-select: none;
+      margin-top: 10px; padding: 13px 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; cursor: pointer; user-select: none;
       transition: border-color .12s;
     }
-
     #dayStartRow .box {
       width: 20px; height: 20px; flex: 0 0 auto;
-      border: 1.5px solid var(--border2);
-      border-radius: 6px;
-      display: grid; place-items: center;
-      font-size: 12px; color: var(--bg);
+      border: 1.5px solid var(--border2); border-radius: 6px;
+      display: grid; place-items: center; font-size: 12px; color: var(--bg);
     }
-
     #dayStartRow[aria-checked="true"] { border-color: var(--needed); }
     #dayStartRow[aria-checked="true"] .box { background: var(--needed); border-color: var(--needed); }
     #dayStartRow[aria-checked="true"] .box::after { content: "\2713"; font-weight: 700; }
@@ -185,30 +190,19 @@
     .spacer { flex: 1 1 auto; min-height: 16px; }
 
     #status {
-      font-family: var(--mono);
-      font-size: 11.5px;
-      letter-spacing: .06em;
-      text-align: center;
-      min-height: 16px;
-      margin-bottom: 10px;
-      color: var(--muted);
+      font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
+      text-align: center; min-height: 16px; margin-bottom: 10px; color: var(--muted);
     }
     #status.ok     { color: var(--needed); }
     #status.queued { color: var(--wanted); }
+    #status.err    { color: var(--wanted); }
 
     #send {
-      appearance: none;
-      width: 100%;
-      min-height: 60px;
-      border: 0;
-      border-radius: 14px;
-      background: var(--text);
-      color: var(--bg);
-      font-family: var(--sans);
-      font-size: 17px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .12s;
+      appearance: none; width: 100%; min-height: 60px;
+      border: 0; border-radius: 14px;
+      background: var(--text); color: var(--bg);
+      font-family: var(--sans); font-size: 17px; font-weight: 600;
+      cursor: pointer; transition: opacity .12s;
     }
     #send:disabled { opacity: .22; cursor: default; }
 
@@ -233,6 +227,143 @@
       min-height: 52px; border: 0; border-radius: 12px;
       background: var(--text); color: var(--bg); font-size: 16px; font-weight: 600; cursor: pointer;
     }
+
+    /* ---------- drawer: today's hour rail ---------- */
+
+    #scrim {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
+      opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 10;
+    }
+    #scrim.open { opacity: 1; pointer-events: auto; }
+
+    #drawer {
+      position: fixed; top: 0; bottom: 0; right: 0; z-index: 11;
+      width: min(400px, 88vw);
+      background: var(--bg); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform .2s ease;
+      padding: calc(16px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom);
+    }
+    #drawer.open { transform: translateX(0); }
+
+    .drawerHead {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 10px; padding: 0 18px 12px;
+    }
+    .drawerHead h2 {
+      font-family: var(--mono); font-size: 12px; font-weight: 600;
+      letter-spacing: .12em; color: var(--muted);
+    }
+    .drawerHead .close {
+      appearance: none; background: none; border: 0; color: var(--muted);
+      font-family: var(--mono); font-size: 18px; cursor: pointer; padding: 0 4px;
+    }
+
+    .rail { flex: 1 1 auto; overflow-y: auto; padding: 0 12px 12px; }
+    .railMsg {
+      font-family: var(--mono); font-size: 11.5px; letter-spacing: .05em;
+      color: var(--muted); text-align: center; padding: 30px 20px; line-height: 1.6;
+    }
+
+    /* one row per hour of the logical day. filled = an entry exists, in the bucket's
+       colour; empty = a hairline, no ink, tap to log that block. absence is texture,
+       never a scold — see SPEC.md on why unaccounted hours are not counted. */
+    .hourRow {
+      display: flex; align-items: stretch; gap: 10px;
+      padding: 3px 6px; border-radius: 10px; cursor: pointer;
+    }
+    .hourRow:hover { background: var(--surface); }
+    .hourRow .time {
+      flex: 0 0 58px; padding-top: 9px;
+      font-family: var(--mono); font-size: 11px; letter-spacing: .02em;
+      color: var(--muted); text-align: right;
+    }
+    .hourRow .body {
+      flex: 1 1 auto; min-width: 0; border-left: 2px solid var(--border);
+      padding: 7px 0 7px 12px;
+    }
+    .hourRow.filled .body { border-left-color: var(--c); }
+    .hourRow .line1 { display: flex; align-items: center; gap: 8px; }
+    .hourRow .tag {
+      font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+      color: var(--c); text-transform: uppercase;
+    }
+    .hourRow .flag { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+    .hourRow .text { font-size: 14px; line-height: 1.45; color: var(--text); margin-top: 2px; word-wrap: break-word; }
+    .hourRow.empty .body { border-left-style: dashed; }
+    .hourRow.empty .text { color: var(--muted); font-style: italic; font-size: 13px; }
+
+    /* inline editor, revealed under a tapped entry */
+    .editor { padding: 8px 6px 12px 76px; }
+    .editor.hide { display: none; }
+    .editBuckets { display: flex; gap: 6px; margin-bottom: 8px; }
+    .editBuckets .eb {
+      appearance: none; flex: 1 1 0; min-height: 34px; border-radius: 9px;
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      font-family: var(--mono); font-size: 10px; letter-spacing: .06em; cursor: pointer;
+    }
+    .editBuckets .eb[aria-pressed="true"] { color: var(--ec); border-color: var(--ec); background: var(--surface2); }
+    .eb.n { --ec: var(--needed); } .eb.w { --ec: var(--wanted); } .eb.d { --ec: var(--drifted); }
+    .editor textarea {
+      width: 100%; min-height: 62px; resize: none; padding: 10px 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.45;
+    }
+    .editor textarea:focus { outline: none; border-color: var(--border2); }
+    .editRow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .editRow .dayTick {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .05em;
+      color: var(--muted); cursor: pointer; user-select: none;
+    }
+    .editRow .dayTick[aria-checked="true"] { color: var(--needed); }
+    .editRow .grow { flex: 1 1 auto; }
+    .editRow button {
+      appearance: none; min-height: 34px; padding: 0 14px; border-radius: 9px;
+      font-family: var(--mono); font-size: 11px; letter-spacing: .04em; cursor: pointer; border: 1px solid var(--border);
+    }
+    .editRow .del { background: none; color: var(--drifted); border-color: transparent; }
+    .editRow .save { background: var(--text); color: var(--bg); border: 0; font-weight: 600; }
+    .editRow .save:disabled { opacity: .3; }
+
+    /* --- drawer tabs --- */
+    .tabs { display: flex; gap: 4px; }
+    .tab {
+      appearance: none; background: none; border: 0; padding: 4px 10px 8px;
+      font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .12em;
+      color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+    }
+    .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); }
+
+    /* --- week view: one card per logical day, newest first --- */
+    .dayCard { padding: 10px 6px; border-top: 1px solid var(--border); }
+    .dayCard:first-child { border-top: 0; }
+    .dayHead {
+      display: flex; align-items: baseline; gap: 8px; cursor: pointer;
+    }
+    .dayHead .dow { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: .04em; }
+    .dayHead .dt { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+    .dayHead .grow { flex: 1 1 auto; }
+    .dayHead .cnt { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .dayHead .chev { font-family: var(--mono); font-size: 10px; color: var(--muted); transition: transform .15s ease; }
+    .dayCard.open .dayHead .chev { transform: rotate(90deg); }
+    .balbar {
+      display: flex; height: 8px; border-radius: 5px; overflow: hidden;
+      margin: 8px 0 2px; background: var(--surface2);
+    }
+    .balbar span { display: block; height: 100%; }
+    .balbar .n { background: var(--needed); } .balbar .w { background: var(--wanted); } .balbar .d { background: var(--drifted); }
+    .balLegend { display: flex; gap: 12px; font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-top: 5px; }
+    .balLegend b { font-weight: 600; }
+    .balLegend .ln { color: var(--needed); } .balLegend .lw { color: var(--wanted); } .balLegend .ld { color: var(--drifted); }
+    .dayEntries { margin-top: 8px; display: none; }
+    .dayCard.open .dayEntries { display: block; }
+    .weekLine { display: flex; gap: 9px; padding: 3px 2px; align-items: baseline; }
+    .weekLine .wt { flex: 0 0 52px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+    .weekLine .dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; }
+    .weekLine .dot.n { background: var(--needed); } .weekLine .dot.w { background: var(--wanted); } .weekLine .dot.d { background: var(--drifted); }
+    .weekLine .wtext { flex: 1 1 auto; font-size: 13.5px; line-height: 1.4; color: var(--text); word-wrap: break-word; }
+
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 
@@ -260,8 +391,14 @@
   <!-- ================= capture ================= -->
   <section id="capture" class="hide">
     <header>
-      <div id="hour">&mdash;</div>
-      <button id="cfgBtn" type="button">CFG</button>
+      <div class="stepper">
+        <button class="step" id="stepBack" type="button" aria-label="earlier hour">&#9664;</button>
+        <div id="block"><span id="blockDate">&mdash;</span><span id="blockRange">&mdash;</span></div>
+        <button class="step" id="stepFwd" type="button" aria-label="later hour">&#9654;</button>
+      </div>
+      <button class="iconbtn" id="railBtn" type="button" aria-label="today's log">DAY</button>
+      <button class="iconbtn" id="themeBtn" type="button" aria-label="toggle theme">&#9788;</button>
+      <button class="iconbtn" id="cfgBtn" type="button">CFG</button>
     </header>
     <div id="sub"></div>
 
@@ -294,15 +431,37 @@
     <button id="send" type="button" disabled>Log the hour</button>
   </section>
 
+  <!-- ================= today / week drawer ================= -->
+  <div id="scrim"></div>
+  <aside id="drawer" aria-hidden="true">
+    <div class="drawerHead">
+      <div class="tabs" role="tablist">
+        <button class="tab" id="tabToday" role="tab" type="button" aria-selected="true">TODAY</button>
+        <button class="tab" id="tabWeek" role="tab" type="button" aria-selected="false">WEEK</button>
+      </div>
+      <button class="close" id="drawerClose" type="button" aria-label="close">&times;</button>
+    </div>
+    <div class="rail" id="rail"></div>
+    <div class="rail" id="week" hidden></div>
+  </aside>
+
   <script>
     'use strict';
 
-    var LS = { url: 'lifelog.url', token: 'lifelog.token', queue: 'lifelog.queue', last: 'lifelog.last' };
+    var LS = {
+      url: 'lifelog.url', token: 'lifelog.token',
+      queue: 'lifelog.queue', last: 'lifelog.last', theme: 'lifelog.theme'
+    };
     var BUCKET_IDS = ['bNeeded', 'bWanted', 'bDrifted'];
     var DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     var MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    var HOUR = 3600000;
+    var BACK_LIMIT_HOURS = 18;   // how far the stepper walks back; the server guards too
 
-    var state = { bucket: null, ts: null, dayStart: false, sending: false };
+    // slotDate: a Date pinned to the top of the block being accounted for.
+    // ts: logged_at, the moment of composing, captured at first interaction.
+    // touched: once true, the block stops auto-advancing with the clock.
+    var state = { bucket: null, slotDate: null, ts: null, dayStart: false, touched: false, sending: false };
     var flushing = false;
     var clockTimer = null;
 
@@ -313,7 +472,7 @@
 
     /** ISO 8601 carrying the device's real offset: 2026-08-23T14:03:11+05:30 */
     function isoWithOffset(d) {
-      var off = -d.getTimezoneOffset();          // minutes east of UTC
+      var off = -d.getTimezoneOffset();
       var sign = off >= 0 ? '+' : '-';
       var abs = Math.abs(off);
       return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
@@ -321,88 +480,92 @@
         sign + pad(Math.floor(abs / 60)) + ':' + pad(abs % 60);
     }
 
-    function shortHour(d) {
-      var h = d.getHours() % 12;
-      if (h === 0) h = 12;
-      return h + ' ' + (d.getHours() < 12 ? 'AM' : 'PM');
-    }
+    function floorHour(d) { var x = new Date(d.getTime()); x.setMinutes(0, 0, 0); return x; }
+    function h12(d) { var h = d.getHours() % 12; return h === 0 ? 12 : h; }
+    function mer(d) { return d.getHours() < 12 ? 'AM' : 'PM'; }
 
-    function hourLabel(d) {
-      return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + '  ·  ' + shortHour(d);
-    }
+    /** The block that most recently CLOSED. At 17:49 that is 16:00–17:00. */
+    function lastClosedBlock() { return new Date(floorHour(new Date()).getTime() - HOUR); }
 
-    /**
-     * The timestamp is the moment I sat down to log, not the moment I pressed send.
-     * An entry begun at 2:58 and sent at 3:01 belongs to the two o'clock hour.
-     * Fires on the first bucket tap or first keystroke, then never again this entry.
-     */
-    function touchTs() {
-      if (state.ts) return;
-      state.ts = isoWithOffset(new Date());
-      if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
-      el('hour').classList.add('locked');
-      renderHour();
-      setSub();
+    /** "4 – 5 PM", collapsing a shared meridian; "11 AM – 12 PM" when it isn't shared. */
+    function rangeLabel(start) {
+      var end = new Date(start.getTime() + HOUR);
+      var left = mer(start) === mer(end) ? String(h12(start)) : h12(start) + ' ' + mer(start);
+      return left + ' – ' + h12(end) + ' ' + mer(end);
     }
-
-    function renderHour() {
-      el('hour').textContent = hourLabel(state.ts ? new Date(state.ts) : new Date());
-    }
+    function dateLabel(d) { return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
 
     /* ---------------- storage ---------------- */
 
     function getQueue() {
-      try {
-        var q = JSON.parse(localStorage.getItem(LS.queue) || '[]');
-        return Array.isArray(q) ? q : [];
-      } catch (e) { return []; }
+      try { var q = JSON.parse(localStorage.getItem(LS.queue) || '[]'); return Array.isArray(q) ? q : []; }
+      catch (e) { return []; }
     }
     function setQueue(q) { localStorage.setItem(LS.queue, JSON.stringify(q)); }
     function newId() { return Date.now() + '-' + Math.random().toString(36).slice(2, 8); }
 
-    /* ---------------- network ---------------- */
+    /* ---------------- theme ---------------- */
+
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      el('themeBtn').innerHTML = t === 'light' ? '&#9789;' : '&#9788;';  // moon on light, sun on dark
+      // keep the OS status bar / PWA chrome in step with the surface
+      var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      el('themeColor').setAttribute('content', bg || '#0a0a0b');
+    }
+    function initTheme() {
+      var saved = localStorage.getItem(LS.theme);
+      if (saved !== 'light' && saved !== 'dark') {
+        saved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+          ? 'light' : 'dark';
+      }
+      applyTheme(saved);
+    }
+    function toggleTheme() {
+      var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      localStorage.setItem(LS.theme, next);
+      applyTheme(next);
+    }
+
+    /* ---------------- network (unchanged, verified) ---------------- */
 
     /**
-     * text/plain is a safelisted content type, so this stays a simple request with no
-     * preflight - Apps Script handles OPTIONS badly. Never mode:'no-cors': that makes
-     * the response opaque, which is exactly how v1 showed a green tick over lost writes.
+     * text/plain is safelisted, so this is a simple request with no preflight — Apps
+     * Script handles OPTIONS badly. Never mode:'no-cors': that makes the response opaque,
+     * which is exactly how v1 showed a green tick over lost writes.
      */
     function post(payload) {
       var url = localStorage.getItem(LS.url);
       if (!url) return Promise.resolve({ ok: false, error: 'not configured' });
       return fetch(url, {
-        method: 'POST',
-        mode: 'cors',
+        method: 'POST', mode: 'cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       }).then(function (res) { return res.text(); })
         .then(function (text) {
-          try { return JSON.parse(text); }
-          catch (e) { return { ok: false, error: 'unreadable response' }; }
+          try { return JSON.parse(text); } catch (e) { return { ok: false, error: 'unreadable response' }; }
         });
     }
 
-    function health(url, token) {
+    function apiGet(params) {
+      var url = localStorage.getItem(LS.url);
+      var token = localStorage.getItem(LS.token) || '';
+      if (!url) return Promise.resolve({ ok: false, error: 'not configured' });
       var sep = url.indexOf('?') === -1 ? '?' : '&';
-      return fetch(url + sep + 'action=health&token=' + encodeURIComponent(token))
+      return fetch(url + sep + params + '&token=' + encodeURIComponent(token))
         .then(function (r) { return r.text(); })
-        .then(function (t) {
-          try { return JSON.parse(t); }
-          catch (e) { return { ok: false, error: 'unreadable response' }; }
-        });
+        .then(function (t) { try { return JSON.parse(t); } catch (e) { return { ok: false, error: 'unreadable response' }; } });
     }
 
     /**
      * Drain oldest first; stop at the first failure and keep the rest. A payload the
-     * server permanently rejects blocks the head of the queue, which surfaces as a depth
-     * that never falls with the reason printed beside it. Visibly stuck beats silently
-     * dropped - the whole point is that nothing disappears quietly.
+     * server permanently rejects blocks the head of the queue, surfacing as a depth that
+     * never falls with the reason beside it. Visibly stuck beats silently dropped.
      */
     function flushQueue() {
       if (flushing || !localStorage.getItem(LS.url)) return Promise.resolve();
       if (!getQueue().length) return Promise.resolve();
       flushing = true;
-
       function step() {
         var pending = getQueue();
         if (!pending.length) return Promise.resolve();
@@ -410,22 +573,31 @@
           .catch(function () { return { ok: false, error: 'no connection' }; })
           .then(function (res) {
             if (!res || !res.ok) { renderQueue(res && res.error); return; }
-            pending.shift();
-            setQueue(pending);
-            renderQueue();
+            pending.shift(); setQueue(pending); renderQueue();
             return step();
           });
       }
-
       return step().then(function () { flushing = false; }, function () { flushing = false; });
     }
 
     /* ---------------- render ---------------- */
 
+    function renderBlock() {
+      if (!state.slotDate) state.slotDate = lastClosedBlock();
+      el('blockDate').textContent = dateLabel(state.slotDate);
+      el('blockRange').textContent = rangeLabel(state.slotDate);
+      el('block').classList.toggle('adjusted', state.touched);
+      // bounds: can't go past the in-progress block, can't walk back past the limit
+      var maxMs = floorHour(new Date()).getTime();
+      var minMs = maxMs - BACK_LIMIT_HOURS * HOUR;
+      el('stepFwd').disabled = state.slotDate.getTime() >= maxMs;
+      el('stepBack').disabled = state.slotDate.getTime() <= minMs;
+    }
+
     function setSub(text, warn) {
       var s = el('sub');
       s.textContent = text || defaultSub();
-      s.style.color = warn ? 'var(--wanted)' : 'var(--muted)';
+      s.classList.toggle('warn', !!warn);
     }
 
     function defaultSub() {
@@ -433,10 +605,7 @@
       if (!last) return '';
       var d = new Date(last);
       if (isNaN(d.getTime())) return '';
-      var ref = state.ts ? new Date(state.ts) : new Date();
-      var sameHour = d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() &&
-        d.getDate() === ref.getDate() && d.getHours() === ref.getHours();
-      return sameHour ? 'already logged this hour' : 'last logged  ' + shortHour(d);
+      return 'last logged  ' + h12(d) + ' ' + mer(d);
     }
 
     function renderQueue(reason) {
@@ -445,46 +614,58 @@
       setSub('queued ' + n + (reason ? ' · ' + reason : '') + ' · will retry', true);
     }
 
-    function setStatus(cls, text) {
-      el('status').className = cls || '';
-      el('status').textContent = text || '';
-    }
+    function setStatus(cls, text) { el('status').className = cls || ''; el('status').textContent = text || ''; }
 
     function refreshSend() {
       el('send').disabled = !state.bucket || !el('sentence').value.trim() || state.sending;
     }
 
     function startClock() {
-      renderHour();
-      setSub();
+      renderBlock(); setSub();
       if (clockTimer) clearInterval(clockTimer);
       clockTimer = setInterval(function () {
-        if (!state.ts) { renderHour(); setSub(); }
-      }, 20000);
+        // only advance the default block while the user hasn't chosen one
+        if (!state.touched) { state.slotDate = lastClosedBlock(); renderBlock(); setSub(); }
+      }, 30000);
     }
 
     function resetForm() {
-      state.bucket = null;
-      state.ts = null;
-      state.dayStart = false;
+      state.bucket = null; state.ts = null; state.dayStart = false; state.touched = false;
+      state.slotDate = lastClosedBlock();
       el('sentence').value = '';
       el('dayStartRow').setAttribute('aria-checked', 'false');
       BUCKET_IDS.forEach(function (id) { el(id).setAttribute('aria-pressed', 'false'); });
-      el('hour').classList.remove('locked');
       startClock();
       refreshSend();
     }
 
     /* ---------------- actions ---------------- */
 
+    /** logged_at is locked at the first interaction, so it means "when I composed this". */
+    function touchTs() { if (!state.ts) state.ts = isoWithOffset(new Date()); }
+
+    function stepBlock(delta) {
+      touchTs();
+      state.touched = true;                       // manual choice; stop auto-advancing
+      var maxMs = floorHour(new Date()).getTime();
+      var minMs = maxMs - BACK_LIMIT_HOURS * HOUR;
+      var next = state.slotDate.getTime() + delta * HOUR;
+      state.slotDate = new Date(Math.max(minMs, Math.min(maxMs, next)));
+      renderBlock();
+    }
+
     function pickBucket(name) {
       touchTs();
       state.bucket = name;
-      BUCKET_IDS.forEach(function (id) {
-        el(id).setAttribute('aria-pressed', String(el(id).dataset.bucket === name));
-      });
+      BUCKET_IDS.forEach(function (id) { el(id).setAttribute('aria-pressed', String(el(id).dataset.bucket === name)); });
       refreshSend();
-      el('sentence').focus();     // one gesture: choose the bucket, keyboard opens
+      el('sentence').focus();
+    }
+
+    function toggleDayStart() {
+      touchTs();
+      state.dayStart = !state.dayStart;
+      el('dayStartRow').setAttribute('aria-checked', String(state.dayStart));
     }
 
     function send() {
@@ -492,13 +673,14 @@
       var sentence = el('sentence').value.trim();
       if (!state.bucket || !sentence) return;
 
-      state.sending = true;
-      refreshSend();
+      state.sending = true; refreshSend();
       setStatus('', 'sending…');
 
       var payload = {
         token: localStorage.getItem(LS.token) || '',
+        action: 'log',
         id: newId(),
+        slot: isoWithOffset(state.slotDate || lastClosedBlock()),
         ts: state.ts || isoWithOffset(new Date()),
         bucket: state.bucket,
         sentence: sentence,
@@ -511,17 +693,12 @@
         .then(function (res) {
           state.sending = false;
           localStorage.setItem(LS.last, loggedTs);
-
           if (res && res.ok) {
             resetForm();
             setStatus('ok', res.dedup ? 'already recorded' : 'logged');
             flushQueue();
           } else {
-            // The entry is never dropped - it goes to the queue, and the UI says so.
-            // The one thing that must never happen is a success state over a failed write.
-            var q = getQueue();
-            q.push(payload);
-            setQueue(q);
+            var q = getQueue(); q.push(payload); setQueue(q);
             resetForm();
             setStatus('queued', 'queued · ' + ((res && res.error) || 'no connection'));
             renderQueue(res && res.error);
@@ -551,17 +728,16 @@
       var url = el('fUrl').value.trim();
       var token = el('fToken').value.trim();
       if (!url || !token) { el('setupMsg').textContent = 'both fields are required'; return; }
-
       el('setupMsg').textContent = 'checking…';
-      // Verified before it is saved. A typo'd URL would otherwise queue every entry
-      // forever while the app looked like it was working.
-      health(url, token)
+      // Verified before saving. A typo'd URL would otherwise queue every entry forever
+      // while the app looked like it was working.
+      var sep = url.indexOf('?') === -1 ? '?' : '&';
+      fetch(url + sep + 'action=health&token=' + encodeURIComponent(token))
+        .then(function (r) { return r.text(); })
+        .then(function (t) { try { return JSON.parse(t); } catch (e) { return { ok: false, error: 'unreadable response' }; } })
         .catch(function () { return { ok: false, error: 'could not reach that URL' }; })
         .then(function (res) {
-          if (!res || !res.ok) {
-            el('setupMsg').textContent = (res && res.error) || 'rejected';
-            return;
-          }
+          if (!res || !res.ok) { el('setupMsg').textContent = (res && res.error) || 'rejected'; return; }
           localStorage.setItem(LS.url, url);
           localStorage.setItem(LS.token, token);
           showCapture();
@@ -569,27 +745,306 @@
         });
     }
 
+    /* ---------------- today drawer ---------------- */
+
+    var CLS = { Needed: 'n', Wanted: 'w', Drifted: 'd' };
+    var drawer = { view: 'today', entries: [], openEditId: null, openDays: {} };
+
+    function esc(s) {
+      return String(s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function openDrawer() {
+      el('scrim').classList.add('open');
+      el('drawer').classList.add('open');
+      el('drawer').setAttribute('aria-hidden', 'false');
+      setView(drawer.view);
+    }
+    function closeDrawer() {
+      el('scrim').classList.remove('open');
+      el('drawer').classList.remove('open');
+      el('drawer').setAttribute('aria-hidden', 'true');
+      drawer.openEditId = null;
+    }
+
+    function setView(v) {
+      drawer.view = v;
+      el('tabToday').setAttribute('aria-selected', String(v === 'today'));
+      el('tabWeek').setAttribute('aria-selected', String(v === 'week'));
+      el('rail').hidden = v !== 'today';
+      el('week').hidden = v !== 'week';
+      if (v === 'today') loadToday(); else loadWeek();
+    }
+
+    function loadToday() {
+      el('rail').innerHTML = '<div class="railMsg">loading…</div>';
+      apiGet('action=today')
+        .catch(function () { return { ok: false, error: 'no connection' }; })
+        .then(function (res) {
+          if (!res || !res.ok) {
+            el('rail').innerHTML = '<div class="railMsg">could not load · ' +
+              esc((res && res.error) || 'offline') + '</div>';
+            return;
+          }
+          drawer.entries = Array.isArray(res.entries) ? res.entries : [];
+          renderRail();
+        });
+    }
+
+    /**
+     * One row per hour from the day's first block to the block in progress. A block with
+     * an entry is drawn filled in its bucket colour; an empty block is a dashed hairline
+     * that logs that hour when tapped. Unaccounted hours are shown as absence of ink, not
+     * as a count of failures — see SPEC.md.
+     */
+    function renderRail() {
+      var rail = el('rail');
+      var entries = drawer.entries.slice().sort(function (a, b) {
+        return Date.parse(a.slot) - Date.parse(b.slot);
+      });
+
+      var group = {};
+      entries.forEach(function (e) { (group[e.slot] = group[e.slot] || []).push(e); });
+
+      var firstMs = entries.length ? floorHour(new Date(entries[0].slot)).getTime()
+        : lastClosedBlock().getTime();
+      var lastMs = floorHour(new Date()).getTime();
+      if (firstMs > lastMs) firstMs = lastMs;
+      if ((lastMs - firstMs) / HOUR > 30) firstMs = lastMs - 30 * HOUR; // guard runaway
+
+      var html = '';
+      for (var ms = firstMs; ms <= lastMs; ms += HOUR) {
+        var d = new Date(ms);
+        var key = isoWithOffset(d);
+        var t = h12(d) + ' ' + mer(d);
+        var rows = group[key];
+        if (rows && rows.length) {
+          rows.forEach(function (e) { html += filledRow(e, t); });
+        } else {
+          html += '<div class="hourRow empty" data-slot="' + key + '">' +
+            '<div class="time">' + t + '</div>' +
+            '<div class="body"><div class="text">log this hour</div></div></div>';
+        }
+      }
+      rail.innerHTML = html || '<div class="railMsg">no entries yet today</div>';
+
+      // wire empty rows -> open capture at that block
+      Array.prototype.forEach.call(rail.querySelectorAll('.hourRow.empty'), function (row) {
+        row.addEventListener('click', function () { captureAt(row.dataset.slot); });
+      });
+      // wire filled rows -> toggle inline editor
+      Array.prototype.forEach.call(rail.querySelectorAll('.hourRow.filled'), function (row) {
+        row.addEventListener('click', function () { toggleEditor(row.dataset.id); });
+      });
+      if (drawer.openEditId) mountEditor(drawer.openEditId);
+    }
+
+    function filledRow(e, t) {
+      var c = CLS[e.bucket] || 'd';
+      var flag = e.dayStart ? '<span class="flag">&#9670; day start</span>' : '';
+      return '<div class="hourRow filled ' + c + '" data-id="' + esc(e.id) + '" style="--c:var(--' +
+        (c === 'n' ? 'needed' : c === 'w' ? 'wanted' : 'drifted') + ')">' +
+        '<div class="time">' + t + '</div>' +
+        '<div class="body"><div class="line1"><span class="tag">' + esc(e.bucket) + '</span>' + flag +
+        '</div><div class="text">' + esc(e.sentence) + '</div></div></div>';
+    }
+
+    function captureAt(slotIso) {
+      var d = new Date(slotIso);
+      if (isNaN(d.getTime())) return;
+      closeDrawer();
+      state.slotDate = floorHour(d);
+      state.touched = true;
+      touchTs();
+      renderBlock();
+      el('sentence').focus();
+    }
+
+    function toggleEditor(id) {
+      drawer.openEditId = (drawer.openEditId === id) ? null : id;
+      renderRail();
+    }
+
+    /** Build the inline editor beneath the open row. Bucket AND sentence are editable
+        (your call — mistaps are real); day_start is editable too, which is the two-tap
+        fix for a missed or misplaced tick. logged_at is never shown or touched. */
+    function mountEditor(id) {
+      var e = null;
+      for (var i = 0; i < drawer.entries.length; i++) if (drawer.entries[i].id === id) e = drawer.entries[i];
+      if (!e) return;
+      var row = el('rail').querySelector('.hourRow.filled[data-id="' + cssEsc(id) + '"]');
+      if (!row) return;
+
+      var box = document.createElement('div');
+      box.className = 'editor';
+      box.innerHTML =
+        '<div class="editBuckets">' +
+        '<button class="eb n" type="button" data-b="Needed">NEEDED</button>' +
+        '<button class="eb w" type="button" data-b="Wanted">WANTED</button>' +
+        '<button class="eb d" type="button" data-b="Drifted">DRIFTED</button></div>' +
+        '<textarea>' + esc(e.sentence) + '</textarea>' +
+        '<div class="editRow">' +
+        '<span class="dayTick" role="checkbox" tabindex="0">&#9670; day start</span>' +
+        '<span class="grow"></span>' +
+        '<button class="del" type="button">delete</button>' +
+        '<button class="save" type="button">save</button></div>';
+      row.insertAdjacentElement('afterend', box);
+
+      var chosen = e.bucket;
+      var day = !!e.dayStart;
+      var ta = box.querySelector('textarea');
+      var saveBtn = box.querySelector('.save');
+      var tick = box.querySelector('.dayTick');
+
+      function paint() {
+        Array.prototype.forEach.call(box.querySelectorAll('.eb'), function (b) {
+          b.setAttribute('aria-pressed', String(b.dataset.b === chosen));
+        });
+        tick.setAttribute('aria-checked', String(day));
+        saveBtn.disabled = !chosen || !ta.value.trim();
+      }
+      Array.prototype.forEach.call(box.querySelectorAll('.eb'), function (b) {
+        b.addEventListener('click', function () { chosen = b.dataset.b; paint(); });
+      });
+      ta.addEventListener('input', paint);
+      function toggleDay() { day = !day; paint(); }
+      tick.addEventListener('click', toggleDay);
+      tick.addEventListener('keydown', function (ev) {
+        if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggleDay(); }
+      });
+      saveBtn.addEventListener('click', function () {
+        saveBtn.disabled = true; saveBtn.textContent = 'saving…';
+        post({ token: localStorage.getItem(LS.token) || '', action: 'update',
+          id: id, slot: e.slot, bucket: chosen, sentence: ta.value.trim(), dayStart: day })
+          .catch(function () { return { ok: false, error: 'no connection' }; })
+          .then(function (res) {
+            if (res && res.ok) { drawer.openEditId = null; loadToday(); }
+            else { saveBtn.disabled = false; saveBtn.textContent = 'save'; saveBtn.classList.add('err'); }
+          });
+      });
+      box.querySelector('.del').addEventListener('click', function () {
+        var delBtn = box.querySelector('.del'); delBtn.textContent = 'deleting…';
+        post({ token: localStorage.getItem(LS.token) || '', action: 'delete', id: id })
+          .catch(function () { return { ok: false, error: 'no connection' }; })
+          .then(function (res) {
+            if (res && res.ok) { drawer.openEditId = null; loadToday(); }
+            else { delBtn.textContent = 'delete'; }
+          });
+      });
+      paint();
+      ta.focus();
+    }
+
+    function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+    /* ---------------- week view (the Sunday review) ---------------- */
+
+    var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+    function loadWeek() {
+      el('week').innerHTML = '<div class="railMsg">loading…</div>';
+      apiGet('action=week&days=7')
+        .catch(function () { return { ok: false, error: 'no connection' }; })
+        .then(function (res) {
+          if (!res || !res.ok) {
+            el('week').innerHTML = '<div class="railMsg">could not load · ' +
+              esc((res && res.error) || 'offline') + '</div>';
+            return;
+          }
+          renderWeek(Array.isArray(res.entries) ? res.entries : []);
+        });
+    }
+
+    /**
+     * A logical day runs from one day_start tick to the next — the same rule the capture
+     * screen and the today rail obey. The clock never decides the boundary; the tick does.
+     * Entries with no preceding tick form their own leading group so nothing is hidden.
+     */
+    function segmentDays(entries) {
+      var days = [], cur = null;
+      entries.forEach(function (e) {
+        if (e.dayStart || !cur) { cur = { start: e.slot, entries: [] }; days.push(cur); }
+        cur.entries.push(e);
+      });
+      return days;
+    }
+
+    function renderWeek(entries) {
+      var sorted = entries.slice().sort(function (a, b) { return Date.parse(a.slot) - Date.parse(b.slot); });
+      var days = segmentDays(sorted).reverse(); // newest day first
+      if (!days.length) { el('week').innerHTML = '<div class="railMsg">no entries in the last 7 days</div>'; return; }
+      if (Object.keys(drawer.openDays).length === 0) drawer.openDays[days[0].start] = true; // newest open
+
+      var html = '';
+      days.forEach(function (day) {
+        var d = new Date(day.start);
+        var c = { Needed: 0, Wanted: 0, Drifted: 0 };
+        day.entries.forEach(function (e) { if (c[e.bucket] != null) c[e.bucket]++; });
+        var total = day.entries.length || 1;
+        var seg = function (k, cls) { return c[k] ? '<span class="' + cls + '" style="width:' + (c[k] / total * 100) + '%"></span>' : ''; };
+        var open = drawer.openDays[day.start] ? ' open' : '';
+
+        var lines = day.entries.slice().reverse().map(function (e) {
+          var t = h12(new Date(e.slot)) + ' ' + mer(new Date(e.slot));
+          var cl = CLS[e.bucket] || 'd';
+          return '<div class="weekLine"><span class="wt">' + t + '</span>' +
+            '<span class="dot ' + cl + '"></span><span class="wtext">' + esc(e.sentence) + '</span></div>';
+        }).join('');
+
+        html += '<div class="dayCard' + open + '" data-day="' + esc(day.start) + '">' +
+          '<div class="dayHead"><span class="dow">' + DOW[d.getDay()] + '</span>' +
+          '<span class="dt">' + d.getDate() + ' ' + MON[d.getMonth()] + '</span>' +
+          '<span class="grow"></span>' +
+          '<span class="cnt">' + day.entries.length + ' logged</span>' +
+          '<span class="chev">&#9656;</span></div>' +
+          '<div class="balbar">' + seg('Needed', 'n') + seg('Wanted', 'w') + seg('Drifted', 'd') + '</div>' +
+          '<div class="balLegend"><span class="ln"><b>' + c.Needed + '</b> needed</span>' +
+          '<span class="lw"><b>' + c.Wanted + '</b> wanted</span>' +
+          '<span class="ld"><b>' + c.Drifted + '</b> drifted</span></div>' +
+          '<div class="dayEntries">' + lines + '</div></div>';
+      });
+      el('week').innerHTML = html;
+
+      Array.prototype.forEach.call(el('week').querySelectorAll('.dayCard'), function (card) {
+        card.querySelector('.dayHead').addEventListener('click', function () {
+          var k = card.dataset.day;
+          drawer.openDays[k] = !drawer.openDays[k];
+          card.classList.toggle('open', drawer.openDays[k]);
+        });
+      });
+    }
+
     /* ---------------- wiring ---------------- */
+
+    initTheme();
+    el('themeBtn').addEventListener('click', toggleTheme);
+
+    el('stepBack').addEventListener('click', function () { stepBlock(-1); });
+    el('stepFwd').addEventListener('click', function () { stepBlock(1); });
 
     BUCKET_IDS.forEach(function (id) {
       el(id).addEventListener('click', function () { pickBucket(this.dataset.bucket); });
     });
-
     el('sentence').addEventListener('input', function () { touchTs(); refreshSend(); });
-
-    function toggleDayStart() {
-      touchTs();
-      state.dayStart = !state.dayStart;
-      el('dayStartRow').setAttribute('aria-checked', String(state.dayStart));
-    }
     el('dayStartRow').addEventListener('click', toggleDayStart);
     el('dayStartRow').addEventListener('keydown', function (e) {
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDayStart(); }
     });
-
     el('send').addEventListener('click', send);
     el('cfgBtn').addEventListener('click', showSetup);
-    el('setupSave').addEventListener('click', saveSetup);
+
+    el('railBtn').addEventListener('click', openDrawer);
+    el('drawerClose').addEventListener('click', closeDrawer);
+    el('scrim').addEventListener('click', closeDrawer);
+    el('tabToday').addEventListener('click', function () { setView('today'); });
+    el('tabWeek').addEventListener('click', function () { setView('week'); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && el('drawer').classList.contains('open')) closeDrawer();
+    });
+
     window.addEventListener('online', function () { flushQueue(); });
 
     if (localStorage.getItem(LS.url) && localStorage.getItem(LS.token)) showCapture();

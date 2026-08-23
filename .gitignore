@@ -1,0 +1,19 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node — the test harnesses are dependency-free today; guard against future additions
+node_modules/
+npm-debug.log*
+
+# Local env / scratch — never commit the /exec URL or token
+.env
+.env.local
+*.log

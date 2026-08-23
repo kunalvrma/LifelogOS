@@ -12,7 +12,7 @@ MacroDroid  ──ping──▶  HUD (this repo, GitHub Pages)  ──POST──
 
 | File | What it is |
 |---|---|
-| `index.html` | the whole HUD — capture screen, first-run config, retry queue |
+| `index.html` | the whole HUD — capture screen with hour-block stepper, Today/Week drawer, light-dark toggle, first-run config, retry queue |
 | `Code.gs` | paste into the Apps Script editor bound to your Sheet |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | offline shell and home-screen install |
 | `lifelog-ping.macro.json` | import into MacroDroid |
@@ -28,11 +28,19 @@ MacroDroid  ──ping──▶  HUD (this repo, GitHub Pages)  ──POST──
    Name `LIFELOG_TOKEN`, value: any long random string. This is the only secret, and it
    lives only here. Keep a copy — you paste it into the HUD in step 8.
 4. Back in the editor, pick **`bootstrap`** from the function dropdown and **Run.**
-   Authorise when prompted. It creates the `Log` sheet, writes the four headers, and
-   forces column A to text format.
+   Authorise when prompted. It creates the `Log` sheet, writes the six headers, and forces
+   columns A, E and F (`hour_slot`, `logged_at`, `id`) to plain-text format.
+
+   > **Re-provisioning an existing sheet?** If you already ran an earlier four-column
+   > version, the old `Log` sheet and its rows are incompatible. Run **`DANGER_resetLog`**
+   > once — it deletes and recreates the `Log` sheet from scratch — then run `bootstrap`.
+   > This wipes all existing rows, so only do it on a sheet whose data you are willing to
+   > lose (test rows).
+
 5. Pick **`selfTest`** and **Run.** The execution log must say `PASS`. It writes a probe
-   row, checks the timestamp survived the round trip byte-for-byte, and deletes the row.
-   If it says `FAIL`, the message names the problem — fix it before going further.
+   entry, checks all six columns survive the round trip byte-for-byte, finds the row by its
+   `id`, edits it (confirming `logged_at` is preserved and the day-start tick clears), then
+   deletes it. If it says `FAIL`, the message names the problem — fix it before going further.
 
 ### 2. Deploy
 
@@ -79,39 +87,56 @@ MacroDroid  ──ping──▶  HUD (this repo, GitHub Pages)  ──POST──
 
 ## Data model
 
-Four columns. Headers in row 1, data from row 2, no title banner.
+Six columns. Headers in row 1, data from row 2, no title banner.
 
-| A `timestamp` | B `bucket` | C `sentence` | D `day_start` |
-|---|---|---|---|
-| `2026-08-23T06:24:03+05:30` | `Needed` | wokeup at 06:24hrs, coffee on the balcony | `TRUE` |
-| `2026-08-23T07:10:41+05:30` | `Drifted` | scrolling, meant to be reading | |
+| A `hour_slot` | B `bucket` | C `sentence` | D `day_start` | E `logged_at` | F `id` |
+|---|---|---|---|---|---|
+| `2026-08-23T06:00:00+05:30` | `Needed` | wokeup at 06:24hrs, coffee on the balcony | `TRUE` | `2026-08-23T06:24:03+05:30` | `k7f3…` |
+| `2026-08-23T07:00:00+05:30` | `Drifted` | scrolling, meant to be reading | | `2026-08-23T07:10:41+05:30` | `k7f9…` |
 
-Column A is **text**, with the offset inside the string, so no timezone anywhere in the
-stack can reinterpret it. Everything else — date, hour, weekday, week, which logical day
-an entry belongs to, how long that day ran — is derived when you read, never stored.
+`hour_slot` is the one-hour block the entry accounts for, floored to the top of the hour. A
+ping at 5pm is about the 4–5pm block, so `hour_slot` is `16:00`. `logged_at` is when you
+actually tapped — the two differ whenever pings pile up and you catch up later, which is
+exactly why the block has to be stored and not inferred from the tap time.
 
-`day_start` marks the first entry of a day. Day *N* ends at the row before the next ticked
-row. Forgot to tick? Tick it later; the segmentation is computed on read, so everything
-re-segments.
+Columns A, E and F are **text**, with the offset inside the string, so no timezone anywhere
+in the stack can reinterpret them. Everything else — date, weekday, week, which logical day
+an entry belongs to, how long that day ran, the per-day balance — is derived when you read,
+never stored.
+
+`id` is a client-generated identity used for idempotent writes and for edit/delete. `day_start`
+marks the first entry of a day. Day *N* ends at the entry before the next ticked entry, **in
+slot order** — once entries can be backdated, the newest row is no longer the latest hour, so
+every read sorts by `hour_slot` first. Forgot to tick? Tick it later from the Today drawer;
+the segmentation is computed on read, so everything re-segments.
 
 ## Endpoints
 
 ```
-POST /exec        {token, id, ts, bucket, sentence, dayStart}  ->  {ok:true, row:47}
-GET  /exec?action=health&token=…                              ->  {ok:true, rows, tz, now}
-GET  /exec?action=week&token=…&days=7                         ->  {ok:true, entries:[…]}
+POST /exec   {token, action:'log',    id, slot, ts, bucket, sentence, dayStart}  -> {ok:true, row:47}
+POST /exec   {token, action:'update', id, slot, bucket, sentence, dayStart}      -> {ok:true, row:47}
+POST /exec   {token, action:'delete', id}                                        -> {ok:true}
+GET  /exec?action=health&token=…                     -> {ok:true, rows, tz, now, slot}
+GET  /exec?action=today&token=…                      -> {ok:true, slot, entries:[…]}  // current logical day
+GET  /exec?action=week&token=…&days=7                -> {ok:true, slot, entries:[…]}  // last N days
 ```
 
-Sent as `text/plain` under `mode:'cors'` — a safelisted content type, so no preflight,
-which Apps Script handles badly. **Never `no-cors`:** it makes the response unreadable,
-and that is precisely how v1 showed a green checkmark over writes that never landed. Every
+`action` defaults to `log` when omitted. `today` and `week` return entries already sorted by
+`hour_slot`; the HUD drawer segments them into logical days on the client.
+
+Sent as `text/plain` under `mode:'cors'` — a safelisted content type, so no preflight, which
+Apps Script handles badly. **Never `no-cors`:** it makes the response unreadable, and that is
+precisely how v1 showed a green checkmark over writes that never landed. Every
 non-`{"ok":true}` answer, including an HTML error page, queues the entry in `localStorage`
 and says so on screen. Nothing is ever dropped quietly.
 
-`id` is an idempotency key, held for six hours in `CacheService`, so a retry after an
-ambiguous failure cannot double-write.
+`id` is an idempotency key, held six hours in `CacheService` **and** checked against the
+Sheet inside a lock before every append — so a retry after an ambiguous failure cannot
+double-write even if it arrives after the cache has expired.
 
 ## Reading it
 
-Sunday. Open the Sheet, read column C in order. The sentences are the mirror; numbers only
-tell you where to look.
+Open the app, tap **DAY**. **Today** is an hour rail for the current logical day — tap a
+filled hour to edit or delete it, tap an empty hour to log it. **Week** is the Sunday review:
+seven days of Needed/Wanted/Drifted balance with the sentences underneath. The sentences are
+the mirror; numbers only tell you where to look.

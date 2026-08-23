@@ -51,9 +51,16 @@ judge an hour I'm still standing in. Hesitation is what killed v1.
 A day can run 2pm to 5am. So the day boundary is never inferred from the clock.
 
 The first entry of a day is flagged with an explicit tick in the UI. Day *N* ends at the
-row before the next ticked row. One marker, nothing to remember, and a missed tick is
-recoverable — tick it later and everything re-segments, because the segmentation is
-computed on read and never stored.
+entry before the next ticked entry — **in slot order, not the order rows were written.**
+One marker, nothing to remember, and a missed tick is recoverable: tick it later (from the
+Today drawer) and everything re-segments, because the segmentation is computed on read and
+never stored.
+
+Once entries can be backdated, insertion order stops meaning time order. Tap a ping three
+hours late, or catch up on yesterday's tail this morning, and the newest *row* is no longer
+the latest *hour*. So every read sorts by `hour_slot` before it does anything else, and the
+"day ends before the next tick" rule is applied to that sorted sequence. This is the single
+most important invariant in the read path: **trust the slot, never the row number.**
 
 > **Clock rules may decide whether the phone buzzes, never what day an entry belongs to.**
 
@@ -68,51 +75,114 @@ Rejected, and why:
 - *A separate DAY STARTED marker row* — creates a second row type that every read has to
   filter, forever.
 
+## The hour a ping accounts for
+
+A ping fires at the top of the hour and asks me to account for the hour that *just closed*.
+**A 5pm ping is about the 4–5pm block.** So the unit an entry describes is the one-hour
+block ending at the ping, and the default block a fresh entry claims is the last completed
+one: at 17:49 that is 16:00–17:00.
+
+This has to be stored, because it cannot be recovered. `logged_at` records when I tapped —
+which drifts, and is exactly the thing that drifts most when the system is working as
+intended (I glance at the ambient notification and clear it whenever I surface). If pings
+pile up and I log three of them at once at 8pm, all three share one `logged_at` neighbourhood
+but describe three different hours. A week later, `logged_at` alone cannot tell me which hour
+each entry was *about*. The intended block is an irreducible fact, not a derivation, so it
+earns a stored column: `hour_slot`.
+
+The capture screen defaults `hour_slot` to the last closed block and lets me step it
+backward (▶◀ in the header, labelled as a range like "4 – 5 PM") to catch up on a block I
+missed. Stepping forward past the block in progress is refused — you can only account for an
+hour that has already begun.
+
+Two guards live in the write path. The slot is floored to the top of its hour by **string
+surgery on the ISO text, never by date arithmetic** — flooring a `+05:30` instant in UTC
+lands on `:30`, not `:00`, which would silently shift every Indian entry half an hour. And a
+slot in the future is rejected and replaced with the last closed block.
+
+## Identity is separate from time
+
+Every entry carries a client-generated `id`. Timestamps are unique in practice, so the id
+looks redundant — but it does two things a timestamp cannot.
+
+It makes **the Sheet the dedupe authority.** A queued offline entry can be retried after the
+in-memory idempotency cache has expired (the cache lives ~6h; a phone can be offline
+longer). Without a stable id checked against the Sheet itself, that retry writes a silent
+duplicate under a green tick. The commit path checks the cache *and* scans the Sheet for the
+id inside a lock before appending.
+
+And it gives **edit and delete something stable to name.** Editing by "the 4pm row" breaks
+the instant a backdated entry reorders the rows; editing by id does not.
+
+## Editing is allowed — a deliberate exception
+
+Capture is meant to be frictionless and final. But the Today drawer lets me edit an existing
+entry's bucket, sentence and day-start tick, and delete it outright. This is a considered
+exception, not a walk-back of "no session state":
+
+- A mistapped bucket or a missed day tick is a real, frequent error, and the two-tap fix (open
+  the drawer, retick) is what makes "a missed tick is recoverable" actually true rather than
+  aspirational.
+- Editability is confined to the *review* surface (the drawer), never the capture screen. The
+  capture screen still does one thing.
+- `logged_at` is never editable and never shown. An edit rewrites the meaning of an hour, not
+  the record of when I first noticed it. The write path preserves the original `logged_at`
+  through every update.
+
 ## Data model
 
-Store only irreducible facts. Four columns, and nothing else is ever added.
+Store only irreducible facts. Six columns, and nothing else is ever added.
 
 | Column | Type | Notes |
 |---|---|---|
-| A `timestamp` | **text** | ISO 8601 with offset, e.g. `2026-08-23T14:03:11+05:30` |
+| A `hour_slot` | **text** | ISO 8601 at the top of the hour, e.g. `2026-08-23T16:00:00+05:30` — the block this entry accounts for |
 | B `bucket` | text | exactly one of `Needed`, `Wanted`, `Drifted` |
 | C `sentence` | text | free text, one line |
 | D `day_start` | boolean | `TRUE` on the first entry of a day, otherwise blank |
+| E `logged_at` | **text** | ISO 8601 with offset — when I first interacted, captured at first tap |
+| F `id` | text | client-generated, ≤64 chars — identity for dedupe, edit and delete |
 
 Headers in row 1. Data from row 2. **No title banner** — v1 had one, which pushed data to
 row 3 and made every hand-written range off by two.
 
-Date, hour, weekday, week number, logical day and day length are **all derived at read
-time**. Never stored.
+`hour_slot`, `logged_at` and `id` are the only irreducible facts. Date, hour, weekday, week
+number, logical day, day length, and the whole per-day balance are **derived at read time**.
+Never stored.
 
-v1 stored six derived columns computed once at write time. They rotted. A week number
+v1 stored six *derived* columns computed once at write time. They rotted. A week number
 computed with a locale-dependent format string and no year component would have collided
-January 2027 with January 2026. Derived data that is frozen is just a lie with a
-timestamp on it.
+January 2027 with January 2026. Derived data that is frozen is just a lie with a timestamp on
+it. Note the distinction: `hour_slot` is stored not because it is convenient but because it
+is *not derivable* — `logged_at` genuinely does not tell you the intended block.
 
-**Column A must be text, not a Date.** v1 wrote column A as a Date object, which Sheets
-rendered in the *spreadsheet's* timezone, while the other columns were strings built from
-the *script's* timezone — a constant +12:30 split across all 100 rows. Storing the offset
-inside the string makes the value self-describing and removes both timezones from the
-equation. The bootstrap forces column A's number format to `@` so Sheets cannot silently
-coerce it back into a date and throw the offset away.
+**Columns A, E and F must be text, not Dates.** v1 wrote its timestamp as a Date object,
+which Sheets rendered in the *spreadsheet's* timezone while the other columns were strings
+built from the *script's* timezone — a constant +12:30 split across all 100 rows. Storing the
+offset inside the string makes each value self-describing and removes both timezones from the
+equation. The bootstrap forces the `@` (plain-text) number format on A, E and F so Sheets
+cannot silently coerce them back into dates and throw the offset away.
 
 ## Capture flow
 
-1. Optional tick: **first entry of the day**.
-2. One tap: **Needed / Wanted / Drifted**.
-3. One sentence.
-4. Send.
+1. The screen opens already claiming **the last closed block** (e.g. "4 – 5 PM"). Step it
+   back only if I'm catching up on an earlier hour.
+2. Optional tick: **first entry of the day**.
+3. One tap: **Needed / Wanted / Drifted**.
+4. One sentence.
+5. Send.
 
-The tap comes *before* the text box. It is the frictionless start that builds momentum,
-and it pre-frames the sentence — having just called the hour Drifted, the sentence I write
-about it is a different and more truthful sentence.
+The block is a default, not a question — most of the time I never touch it. The bucket tap
+comes *before* the text box. It is the frictionless start that builds momentum, and it
+pre-frames the sentence — having just called the hour Drifted, the sentence I write about it
+is a different and more truthful sentence.
 
-**The timestamp is captured at first interaction, not at send.** The moment I sat down to
-log is the hour being logged. An entry started at 2:58 and sent at 3:01 belongs to the two
-o'clock hour.
+**`logged_at` is captured at first interaction, not at send.** The moment I sat down to log
+is recorded; the *hour I'm accounting for* is `hour_slot`, chosen separately. An entry I
+start typing at 2:58 and send at 3:01 has a `logged_at` of 2:58, independent of whichever
+block it claims.
 
-Nothing else is ever added to this screen.
+Nothing else is ever added to this screen. Editing and review live in the drawer, one swipe
+away, never here.
 
 ## Pings
 
@@ -132,6 +202,17 @@ the window — not to abandon the system.
 
 v1 was write-only. Its summary tab was broken and three months stale and I never noticed,
 because nothing ever asked me to look. No reward loop, so it died.
+
+So reading is built into the HUD, not bolted on as a spreadsheet tab. The drawer has two
+faces: **Today** draws an hour rail for the current logical day — one row per hour from the
+day's first block to the hour in progress, filled rows in the bucket's colour, empty hours as
+dashed hairlines I can tap to fill. **Week** lays out the last seven days as cards, each with
+a Needed/Wanted/Drifted balance bar and its sentences underneath.
+
+Both are **computed on read** — `?action=today` and `?action=week` segment and summarise
+live from the log every time. There is deliberately no stored week tab. v1's summary was a
+stored, write-time computation, and that is precisely what rotted; recomputing on every read
+cannot go stale. The Sheet stays six clean columns.
 
 Sunday: read the week's sentences in order. **The sentences are the mirror. Numbers only
 tell me where to look.** Bucket ratios sliced by hour-of-day and weekday are the only
