@@ -1,0 +1,53 @@
+{
+  "macroExportVersion": 1,
+  "macro": {
+    "m_name": "Lifelog — hourly ping",
+    "m_description": "Every hour on the hour, shows one silent notification naming the hour to log. Tapping it opens the Lifelog HUD. Holds no state and captures no data.",
+    "m_enabled": true,
+    "m_completed": true,
+    "m_GUID": 0,
+    "m_category": "Lifelog",
+    "aiGenerated": 1,
+    "m_triggerList": [
+      {
+        "m_classType": "RegularIntervalTrigger",
+        "m_SIGUID": 0,
+        "m_seconds": 3600,
+        "m_startHour": 0,
+        "m_startMinute": 0,
+        "m_ignoreReferenceStartTime": false,
+        "m_useAlarm": true
+      }
+    ],
+    "m_actionList": [
+      {
+        "m_classType": "NotificationAction",
+        "m_SIGUID": 0,
+        "m_notificationSubject": "{hour12} {am_pm} — log the hour",
+        "m_notificationText": "Needed, Wanted or Drifted, then one sentence.",
+        "m_notificationChannelType": 1,
+        "m_priority": -1,
+        "m_overwriteExisting": true,
+        "notificatonId": 771,
+        "iconType": 0,
+        "m_imageResourceName": "fa_clock",
+        "configuredActionClassType": "OpenWebPageAction",
+        "configuredActionName": "Open Lifelog",
+        "configuredActionJson": "{\"m_classType\":\"OpenWebPageAction\",\"m_SIGUID\":0,\"m_urlToOpen\":\"https://kunalvrma.github.io/LifelogOS/\",\"m_httpGet\":false}"
+      }
+    ],
+    "m_constraintList": [
+      {
+        "m_classType": "TimeOfDayConstraint",
+        "m_SIGUID": 0,
+        "m_startHour": 6,
+        "m_startMinute": 0,
+        "m_endHour": 1,
+        "m_endMinute": 0
+      }
+    ]
+  },
+  "globalVariables": [],
+  "userIcons": null,
+  "aiFeedback": "Fires RegularIntervalTrigger every 3600s with m_ignoreReferenceStartTime=false and a 00:00 reference, so intervals align to the top of each hour rather than to whenever the macro was enabled; m_useAlarm=true asks for alarm-manager precision so Doze does not slide it. The notification is channel type 1 (Silent) at priority -1 (Low) so it never makes a sound, and m_overwriteExisting with a fixed notificatonId (771) means each hour replaces the previous one instead of stacking a tower of them. Tap-to-open is a configuredActionJson holding a serialised OpenWebPageAction. VERIFY TWO THINGS ON THE PHONE: (1) TimeOfDayConstraint 06:00-01:00 crosses midnight, which the schema does not confirm - if pings stop after midnight or never fire at all, just delete the constraint; the notification is silent, so a 3am one costs nothing. (2) m_imageResourceName 'fa_clock' is a guess at the built-in icon name - if the notification shows a blank or default icon, pick one in the UI. Everything else is taken directly from the schema."
+}
