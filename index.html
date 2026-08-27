@@ -32,6 +32,13 @@
       --drifted: #7f8794;
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       --sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      /* GYST motion tokens */
+      --ease-settle:   cubic-bezier(.16,1,.3,1);
+      --ease-exit:     cubic-bezier(.5,0,.75,0);
+      --ease-standard: cubic-bezier(.25,1,.5,1);
+      --dur-fast: 180ms;
+      --dur-med:  320ms;
+      --dur-slow: 450ms;
     }
 
     /* Light theme is a ledger card, not an inversion: cool paper and ink, with the three
@@ -73,26 +80,51 @@
 
     /* ---------- header ---------- */
 
-    header { display: flex; align-items: center; gap: 8px; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .brand {
+      font-family: var(--mono); font-size: 15px; font-weight: 700;
+      letter-spacing: .08em; color: var(--text);
+    }
+    .headerActions { display: flex; gap: 4px; }
 
-    /* the stepper is the hero: a block of time you are accounting for, and the two
-       arrows that walk it. mono, because it is the clock talking. */
-    .stepper { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
+    .iconbtn {
+      appearance: none; flex: 0 0 auto;
+      width: 40px; height: 40px;
+      background: none; border: 1px solid transparent;
+      border-radius: 11px; color: var(--muted);
+      display: grid; place-items: center;
+      cursor: pointer; transition: color var(--dur-fast) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard);
+    }
+    .iconbtn:hover { color: var(--text); }
+    .iconbtn img { width: 26px; height: 26px; border-radius: 50%; }
+    .iconbtn svg { width: 20px; height: 20px; }
+
+    /* ---------- stepper ---------- */
+
+    .stepper {
+      display: flex; align-items: center; gap: 8px;
+      justify-content: center; margin-bottom: 10px;
+    }
 
     .step {
       appearance: none; flex: 0 0 auto;
-      width: 40px; height: 40px;
+      width: 44px; height: 44px;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 11px; color: var(--text);
+      border-radius: 12px; color: var(--text);
       font-family: var(--mono); font-size: 16px; line-height: 1;
-      cursor: pointer; transition: border-color .12s, opacity .12s;
+      cursor: pointer; transition: border-color var(--dur-fast) var(--ease-standard),
+        opacity var(--dur-fast) var(--ease-standard);
     }
     .step:disabled { opacity: .25; cursor: default; }
 
     #block {
-      flex: 1 1 auto; text-align: center;
+      text-align: center; padding: 4px 12px;
       font-family: var(--mono); font-weight: 600;
-      font-size: 16px; letter-spacing: .04em;
+      font-size: 18px; letter-spacing: .04em;
       color: var(--text);
     }
     #blockDate {
@@ -102,20 +134,10 @@
     }
     #block.adjusted #blockDate::after { content: " · EDITED"; color: var(--wanted); }
 
-    .iconbtn {
-      appearance: none; flex: 0 0 auto;
-      width: 40px; height: 40px;
-      background: none; border: 1px solid transparent;
-      border-radius: 11px; color: var(--muted);
-      font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
-      cursor: pointer; transition: color .12s, border-color .12s;
-    }
-    .iconbtn:hover { color: var(--text); }
-
     #sub {
       font-family: var(--mono);
       font-size: 11px; letter-spacing: .06em;
-      color: var(--muted); min-height: 15px; margin-top: 10px;
+      color: var(--muted); min-height: 15px; text-align: center; margin-bottom: 6px;
     }
     #sub.warn { color: var(--wanted); }
 
@@ -189,20 +211,32 @@
 
     .spacer { flex: 1 1 auto; min-height: 16px; }
 
-    #status {
-      font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
-      text-align: center; min-height: 16px; margin-bottom: 10px; color: var(--muted);
+    #toast {
+      position: fixed; left: 50%; transform: translateX(-50%) translateY(20px);
+      bottom: calc(20px + env(safe-area-inset-bottom));
+      padding: 10px 22px; border-radius: 10px; z-index: 30;
+      font-family: var(--mono); font-size: 12px; letter-spacing: .04em;
+      color: var(--bg); background: var(--muted);
+      pointer-events: none; opacity: 0;
+      transition: opacity var(--dur-fast) var(--ease-exit),
+        transform var(--dur-fast) var(--ease-exit);
+      white-space: nowrap;
     }
-    #status.ok     { color: var(--needed); }
-    #status.queued { color: var(--wanted); }
-    #status.err    { color: var(--wanted); }
+    #toast.show {
+      opacity: 1; transform: translateX(-50%) translateY(0);
+      transition: opacity var(--dur-fast) var(--ease-settle),
+        transform var(--dur-fast) var(--ease-settle);
+    }
+    #toast.toast-ok   { background: var(--needed); }
+    #toast.toast-warn { background: var(--wanted); }
+    #toast.toast-err  { background: #e05252; }
 
     #send {
       appearance: none; width: 100%; min-height: 60px;
       border: 0; border-radius: 14px;
       background: var(--text); color: var(--bg);
       font-family: var(--sans); font-size: 17px; font-weight: 600;
-      cursor: pointer; transition: opacity .12s;
+      cursor: pointer; transition: opacity var(--dur-fast) var(--ease-standard);
     }
     #send:disabled { opacity: .22; cursor: default; }
 
@@ -228,23 +262,70 @@
       background: var(--text); color: var(--bg); font-size: 16px; font-weight: 600; cursor: pointer;
     }
 
-    /* ---------- drawer: today's hour rail ---------- */
-
     #scrim {
       position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
-      opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 10;
+      opacity: 0; pointer-events: none;
+      transition: opacity var(--dur-med) var(--ease-standard); z-index: 10;
     }
     #scrim.open { opacity: 1; pointer-events: auto; }
 
+    /* day/week drawer — LEFT side */
     #drawer {
-      position: fixed; top: 0; bottom: 0; right: 0; z-index: 11;
+      position: fixed; top: 0; bottom: 0; left: 0; z-index: 11;
       width: min(400px, 88vw);
-      background: var(--bg); border-left: 1px solid var(--border);
+      background: var(--bg); border-right: 1px solid var(--border);
       display: flex; flex-direction: column;
-      transform: translateX(100%); transition: transform .2s ease;
+      transform: translateX(-100%);
+      transition: transform var(--dur-med) var(--ease-settle);
       padding: calc(16px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom);
     }
     #drawer.open { transform: translateX(0); }
+    #drawer.closing { transition: transform var(--dur-med) var(--ease-exit); }
+
+    /* hamburger menu — RIGHT side */
+    #menu {
+      position: fixed; top: 0; bottom: 0; right: 0; z-index: 11;
+      width: min(300px, 80vw);
+      background: var(--bg); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 0;
+      transform: translateX(100%);
+      transition: transform var(--dur-med) var(--ease-settle);
+      padding: calc(20px + env(safe-area-inset-top)) 18px env(safe-area-inset-bottom);
+    }
+    #menu.open { transform: translateX(0); }
+    #menu.closing { transition: transform var(--dur-med) var(--ease-exit); }
+
+    .menuHead {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .menuHead h2 {
+      font-family: var(--mono); font-size: 12px; font-weight: 600;
+      letter-spacing: .12em; color: var(--muted);
+    }
+    .menuHead .close {
+      appearance: none; background: none; border: 0; color: var(--muted);
+      font-family: var(--mono); font-size: 18px; cursor: pointer; padding: 0 4px;
+    }
+    .menuItem {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 0; border-top: 1px solid var(--border);
+      cursor: pointer; user-select: none;
+    }
+    .menuItem:first-of-type { border-top: 0; }
+    .menuItem .mi-icon {
+      width: 20px; height: 20px; flex: 0 0 20px;
+      color: var(--muted); display: grid; place-items: center;
+    }
+    .menuItem .mi-label {
+      flex: 1 1 auto; font-size: 14.5px; color: var(--text);
+    }
+    .menuItem .mi-detail {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+      color: var(--muted);
+    }
+    .menuItem.danger .mi-label { color: #e05252; }
+    .menuItem.danger .mi-icon { color: #e05252; }
 
     .drawerHead {
       display: flex; align-items: baseline; justify-content: space-between;
@@ -391,15 +472,24 @@
   <!-- ================= capture ================= -->
   <section id="capture" class="hide">
     <header>
-      <div class="stepper">
-        <button class="step" id="stepBack" type="button" aria-label="earlier hour">&#9664;</button>
-        <div id="block"><span id="blockDate">&mdash;</span><span id="blockRange">&mdash;</span></div>
-        <button class="step" id="stepFwd" type="button" aria-label="later hour">&#9654;</button>
+      <span class="brand">LIFELOG</span>
+      <div class="headerActions">
+        <button class="iconbtn" id="railBtn" type="button" aria-label="today's log">
+          <img src="./icon-192.png" alt="">
+        </button>
+        <button class="iconbtn" id="menuBtn" type="button" aria-label="menu">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/>
+          </svg>
+        </button>
       </div>
-      <button class="iconbtn" id="railBtn" type="button" aria-label="today's log">DAY</button>
-      <button class="iconbtn" id="themeBtn" type="button" aria-label="toggle theme">&#9788;</button>
-      <button class="iconbtn" id="cfgBtn" type="button">CFG</button>
     </header>
+
+    <div class="stepper">
+      <button class="step" id="stepBack" type="button" aria-label="earlier hour">&#9664;</button>
+      <div id="block"><span id="blockDate">&mdash;</span><span id="blockRange">&mdash;</span></div>
+      <button class="step" id="stepFwd" type="button" aria-label="later hour">&#9654;</button>
+    </div>
     <div id="sub"></div>
 
     <div class="buckets">
@@ -427,11 +517,13 @@
     </div>
 
     <div class="spacer"></div>
-    <div id="status"></div>
     <button id="send" type="button" disabled>Log the hour</button>
   </section>
 
-  <!-- ================= today / week drawer ================= -->
+  <!-- ================= toast ================= -->
+  <div id="toast"></div>
+
+  <!-- ================= day/week drawer (LEFT) ================= -->
   <div id="scrim"></div>
   <aside id="drawer" aria-hidden="true">
     <div class="drawerHead">
@@ -445,12 +537,34 @@
     <div class="rail" id="week" hidden></div>
   </aside>
 
+  <!-- ================= hamburger menu (RIGHT) ================= -->
+  <aside id="menu" aria-hidden="true">
+    <div class="menuHead">
+      <h2>MENU</h2>
+      <button class="close" id="menuClose" type="button" aria-label="close">&times;</button>
+    </div>
+    <div class="menuItem" id="menuTheme">
+      <span class="mi-icon" id="menuThemeIcon">&#9788;</span>
+      <span class="mi-label" id="menuThemeLabel">Dark mode</span>
+    </div>
+    <div class="menuItem" id="menuSync">
+      <span class="mi-icon">&#8635;</span>
+      <span class="mi-label">Sync now</span>
+      <span class="mi-detail" id="syncDetail">checking…</span>
+    </div>
+    <div class="menuItem danger" id="menuReset">
+      <span class="mi-icon">&#9888;</span>
+      <span class="mi-label">Reset configuration</span>
+    </div>
+  </aside>
+
   <script>
     'use strict';
 
     var LS = {
       url: 'lifelog.url', token: 'lifelog.token',
-      queue: 'lifelog.queue', last: 'lifelog.last', theme: 'lifelog.theme'
+      queue: 'lifelog.queue', last: 'lifelog.last', theme: 'lifelog.theme',
+      lastSync: 'lifelog.lastSync'
     };
     var BUCKET_IDS = ['bNeeded', 'bWanted', 'bDrifted'];
     var DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -678,7 +792,13 @@
         });
       }
       return step().then(
-        function () { syncing = false; },
+        function () {
+          syncing = false;
+          // record last successful sync if queue is now empty
+          dbUnsyncedCount().then(function (n) {
+            if (!n) localStorage.setItem(LS.lastSync, new Date().toISOString());
+          });
+        },
         function () { syncing = false; }
       );
     }
@@ -723,7 +843,10 @@
 
     function applyTheme(t) {
       document.documentElement.setAttribute('data-theme', t);
-      el('themeBtn').innerHTML = t === 'light' ? '&#9789;' : '&#9788;';  // moon on light, sun on dark
+      // update menu label if the menu element exists (it does after first render)
+      var lbl = el('menuThemeLabel'), ico = el('menuThemeIcon');
+      if (lbl) lbl.textContent = t === 'light' ? 'Light mode' : 'Dark mode';
+      if (ico) ico.innerHTML = t === 'light' ? '&#9789;' : '&#9788;';
       // keep the OS status bar / PWA chrome in step with the surface
       var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
       el('themeColor').setAttribute('content', bg || '#0a0a0b');
@@ -804,11 +927,22 @@
     function renderSyncStatus(reason) {
       dbUnsyncedCount().then(function (n) {
         if (!n) { setSub(); return; }
-        setSub('syncing ' + n + (reason ? ' · ' + reason : '') + ' · will retry', true);
+        var msg = 'syncing ' + n + (reason ? ' · ' + reason : '') + ' · will retry';
+        setSub(msg, true);
+        showToast(msg, 'warn');
       }).catch(function () { setSub(); });
     }
 
-    function setStatus(cls, text) { el('status').className = cls || ''; el('status').textContent = text || ''; }
+    var toastTimer = null;
+    function showToast(text, type) {
+      var t = el('toast');
+      clearTimeout(toastTimer);
+      t.textContent = text;
+      t.className = 'show' + (type ? ' toast-' + type : '');
+      toastTimer = setTimeout(function () {
+        t.classList.remove('show');
+      }, 2500);
+    }
 
     function refreshSend() {
       el('send').disabled = !state.bucket || !el('sentence').value.trim() || state.sending;
@@ -869,25 +1003,44 @@
 
       state.sending = true; refreshSend();
 
-      var id = newId();
       var slot = isoWithOffset(state.slotDate || lastClosedBlock());
       var ts = state.ts || isoWithOffset(new Date());
-      var entry = {
-        id: id, slot: slot, bucket: state.bucket,
-        sentence: sentence, dayStart: state.dayStart,
-        _synced: false, _pendingAction: 'log', _ts: ts
-      };
 
-      dbPut(entry).then(function () {
-        state.sending = false;
-        localStorage.setItem(LS.last, ts);
-        resetForm();
-        setStatus('ok', 'logged');
-        syncQueue(); // fire-and-forget background sync
+      // check if an entry already exists at this slot — update it instead of duplicating
+      dbAll().then(function (all) {
+        var existing = null;
+        for (var i = 0; i < all.length; i++) {
+          if (all[i].slot === slot && all[i]._pendingAction !== 'delete') {
+            existing = all[i]; break;
+          }
+        }
+
+        var entry;
+        if (existing) {
+          entry = {
+            id: existing.id, slot: slot, bucket: state.bucket,
+            sentence: sentence, dayStart: state.dayStart,
+            _synced: false, _pendingAction: 'update',
+            _ts: existing._ts || ts
+          };
+        } else {
+          entry = {
+            id: newId(), slot: slot, bucket: state.bucket,
+            sentence: sentence, dayStart: state.dayStart,
+            _synced: false, _pendingAction: 'log', _ts: ts
+          };
+        }
+
+        return dbPut(entry).then(function () {
+          state.sending = false;
+          localStorage.setItem(LS.last, ts);
+          resetForm();
+          showToast(existing ? 'updated' : 'logged', 'ok');
+          syncQueue();
+        });
       }).catch(function () {
-        // IndexedDB write failed (extremely rare) — fall back to direct post
         state.sending = false;
-        setStatus('err', 'local save failed');
+        showToast('local save failed', 'err');
       });
     }
 
@@ -927,7 +1080,7 @@
           localStorage.setItem(LS.url, url);
           localStorage.setItem(LS.token, token);
           showCapture();
-          setStatus('ok', 'connected · ' + res.rows + ' rows · ' + res.tz);
+          showToast('connected · ' + res.rows + ' rows · ' + res.tz, 'ok');
         });
     }
 
@@ -1136,6 +1289,7 @@
           return dbPut(updated);
         }).then(function () {
           drawer.openEditId = null;
+          showToast('saved', 'ok');
           loadToday();
           syncQueue();
         }).catch(function () {
@@ -1152,6 +1306,7 @@
           }
         }).then(function () {
           drawer.openEditId = null;
+          showToast('deleted', 'ok');
           loadToday();
           syncQueue();
         }).catch(function () { delBtn.textContent = 'delete'; });
@@ -1257,7 +1412,6 @@
     /* ---------------- wiring ---------------- */
 
     initTheme();
-    el('themeBtn').addEventListener('click', toggleTheme);
 
     el('stepBack').addEventListener('click', function () { stepBlock(-1); });
     el('stepFwd').addEventListener('click', function () { stepBlock(1); });
@@ -1271,16 +1425,115 @@
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDayStart(); }
     });
     el('send').addEventListener('click', send);
-    el('cfgBtn').addEventListener('click', showSetup);
 
+    /* --- left drawer (day/week) --- */
     el('railBtn').addEventListener('click', openDrawer);
     el('drawerClose').addEventListener('click', closeDrawer);
-    el('scrim').addEventListener('click', closeDrawer);
     el('tabToday').addEventListener('click', function () { setView('today'); });
     el('tabWeek').addEventListener('click', function () { setView('week'); });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && el('drawer').classList.contains('open')) closeDrawer();
+
+    /* --- right menu (hamburger) --- */
+    function openMenu() {
+      el('scrim').classList.add('open');
+      el('menu').classList.remove('closing');
+      el('menu').classList.add('open');
+      el('menu').setAttribute('aria-hidden', 'false');
+      // refresh sync detail
+      dbUnsyncedCount().then(function (n) {
+        var last = localStorage.getItem(LS.lastSync);
+        var lastStr = last ? relTime(last) : 'never';
+        el('syncDetail').textContent = (n ? n + ' pending · ' : '') + lastStr;
+      }).catch(function () {});
+    }
+    function closeMenu() {
+      el('menu').classList.add('closing');
+      el('menu').classList.remove('open');
+      el('menu').setAttribute('aria-hidden', 'true');
+      el('scrim').classList.remove('open');
+    }
+    function relTime(isoStr) {
+      var diff = Math.round((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      return Math.floor(diff / 3600) + 'h ago';
+    }
+
+    el('menuBtn').addEventListener('click', openMenu);
+    el('menuClose').addEventListener('click', closeMenu);
+
+    el('menuTheme').addEventListener('click', function () {
+      toggleTheme();
     });
+
+    el('menuSync').addEventListener('click', function () {
+      el('syncDetail').textContent = 'syncing…';
+      syncQueue().then(function () {
+        return dbUnsyncedCount();
+      }).then(function (n) {
+        var last = localStorage.getItem(LS.lastSync);
+        el('syncDetail').textContent = (n ? n + ' pending · ' : '') + (last ? relTime(last) : 'never');
+        showToast(n ? 'synced partially · ' + n + ' remaining' : 'fully synced', n ? 'warn' : 'ok');
+      }).catch(function () {
+        el('syncDetail').textContent = 'sync failed';
+        showToast('sync failed', 'err');
+      });
+    });
+
+    el('menuReset').addEventListener('click', function () {
+      if (!confirm('Reset configuration? You will need to re-enter your Apps Script URL and token.')) return;
+      [LS.url, LS.token, LS.last, LS.lastSync].forEach(function (k) { localStorage.removeItem(k); });
+      closeMenu();
+      showSetup();
+      showToast('configuration reset', 'warn');
+    });
+
+    /* scrim closes whichever panel is open */
+    el('scrim').addEventListener('click', function () {
+      if (el('drawer').classList.contains('open')) closeDrawer();
+      else closeMenu();
+    });
+
+    /* Escape closes either */
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (el('drawer').classList.contains('open')) closeDrawer();
+      else if (el('menu').classList.contains('open')) closeMenu();
+    });
+
+    /* --- swipe gestures --- */
+    (function () {
+      var sx = 0, sy = 0, tracking = false;
+      var EDGE = 30, MIN_X = 50, MAX_Y = 100;
+
+      document.addEventListener('touchstart', function (e) {
+        var t = e.touches[0];
+        sx = t.clientX; sy = t.clientY; tracking = true;
+      }, { passive: true });
+
+      document.addEventListener('touchend', function (e) {
+        if (!tracking) return; tracking = false;
+        var t = e.changedTouches[0];
+        var dx = t.clientX - sx, dy = t.clientY - sy;
+        if (Math.abs(dy) > MAX_Y || Math.abs(dx) < MIN_X) return;
+
+        var drawerOpen = el('drawer').classList.contains('open');
+        var menuOpen   = el('menu').classList.contains('open');
+
+        if (dx > 0 && sx < EDGE && !drawerOpen && !menuOpen) {
+          // right swipe from left edge → open drawer
+          openDrawer();
+        } else if (dx < 0 && drawerOpen) {
+          // left swipe while drawer open → close drawer
+          closeDrawer();
+        } else if (dx < 0 && window.innerWidth - sx < EDGE && !menuOpen && !drawerOpen) {
+          // left swipe from right edge → open menu
+          openMenu();
+        } else if (dx > 0 && menuOpen) {
+          // right swipe while menu open → close menu
+          closeMenu();
+        }
+      }, { passive: true });
+    }());
 
     window.addEventListener('online', function () { syncQueue(); });
 
