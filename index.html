@@ -462,7 +462,6 @@
     // ts: logged_at, the moment of composing, captured at first interaction.
     // touched: once true, the block stops auto-advancing with the clock.
     var state = { bucket: null, slotDate: null, ts: null, dayStart: false, touched: false, sending: false };
-    var flushing = false;
     var clockTimer = null;
 
     function el(id) { return document.getElementById(id); }
@@ -495,14 +494,230 @@
     }
     function dateLabel(d) { return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
 
-    /* ---------------- storage ---------------- */
+    /* ---------------- storage (IndexedDB — offline-first) ---------------- */
 
-    function getQueue() {
-      try { var q = JSON.parse(localStorage.getItem(LS.queue) || '[]'); return Array.isArray(q) ? q : []; }
-      catch (e) { return []; }
-    }
-    function setQueue(q) { localStorage.setItem(LS.queue, JSON.stringify(q)); }
     function newId() { return Date.now() + '-' + Math.random().toString(36).slice(2, 8); }
+
+    /**
+     * Minimal IndexedDB wrapper. The 'entries' store is the local source of truth.
+     * Each entry mirrors the server shape (slot, bucket, sentence, dayStart, id)
+     * plus two internal fields:
+     *   _synced        false = needs to be pushed to server
+     *   _pendingAction 'log' | 'update' | 'delete' — what to POST next
+     *
+     * Reads always hit IndexedDB first; the server refreshes in background.
+     */
+    var DB_NAME = 'lifelog';
+    var DB_VERSION = 1;
+    var STORE = 'entries';
+    var _db = null;
+
+    function openDB() {
+      if (_db) return Promise.resolve(_db);
+      return new Promise(function (resolve, reject) {
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = function (e) {
+          var db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            var s = db.createObjectStore(STORE, { keyPath: 'id' });
+            s.createIndex('by-slot', 'slot', { unique: false });
+            s.createIndex('by-synced', '_synced', { unique: false });
+          }
+        };
+        req.onsuccess = function (e) { _db = e.target.result; resolve(_db); };
+        req.onerror = function () { reject(req.error); };
+      });
+    }
+
+    function dbPut(entry) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put(entry);
+          tx.oncomplete = function () { resolve(); };
+          tx.onerror = function () { reject(tx.error); };
+        });
+      });
+    }
+
+    function dbGet(id) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readonly');
+          var req = tx.objectStore(STORE).get(id);
+          req.onsuccess = function () { resolve(req.result || null); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function dbDelete(id) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).delete(id);
+          tx.oncomplete = function () { resolve(); };
+          tx.onerror = function () { reject(tx.error); };
+        });
+      });
+    }
+
+    function dbAll() {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readonly');
+          var req = tx.objectStore(STORE).getAll();
+          req.onsuccess = function () { resolve(req.result || []); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function dbUnsynced() {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readonly');
+          var idx = tx.objectStore(STORE).index('by-synced');
+          var req = idx.getAll(false);
+          req.onsuccess = function () { resolve(req.result || []); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    /** Count entries pending sync */
+    function dbUnsyncedCount() {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readonly');
+          var idx = tx.objectStore(STORE).index('by-synced');
+          var req = idx.count(false);
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    /**
+     * Merge server entries into IndexedDB without overwriting local unsynced edits.
+     * Server data is the initial seed and background refresh — local unsynced
+     * entries always win.
+     */
+    function dbMergeServerEntries(entries) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE, 'readwrite');
+          var store = tx.objectStore(STORE);
+          var remaining = entries.length;
+          if (!remaining) { resolve(); return; }
+          entries.forEach(function (e) {
+            var check = store.get(e.id);
+            check.onsuccess = function () {
+              var existing = check.result;
+              // don't overwrite local unsynced changes
+              if (!existing || existing._synced !== false) {
+                store.put({
+                  id: e.id, slot: e.slot, bucket: e.bucket,
+                  sentence: e.sentence, dayStart: !!e.dayStart,
+                  _synced: true, _pendingAction: null
+                });
+              }
+              remaining--;
+              if (remaining === 0) resolve();
+            };
+            check.onerror = function () { remaining--; if (remaining === 0) resolve(); };
+          });
+          tx.onerror = function () { reject(tx.error); };
+        });
+      });
+    }
+
+    /* ------------ sync engine ------------ */
+
+    var syncing = false;
+
+    /**
+     * Push unsynced entries to the server, oldest first. Stops at first failure
+     * to preserve ordering (same semantics as the old flushQueue).
+     */
+    function syncQueue() {
+      if (syncing || !localStorage.getItem(LS.url)) return Promise.resolve();
+      syncing = true;
+      function step() {
+        return dbUnsynced().then(function (pending) {
+          if (!pending.length) return;
+          // sort oldest first
+          pending.sort(function (a, b) { return (a.id < b.id ? -1 : 1); });
+          var entry = pending[0];
+          var action = entry._pendingAction || 'log';
+
+          var payload = {
+            token: localStorage.getItem(LS.token) || '',
+            action: action,
+            id: entry.id
+          };
+          if (action === 'log' || action === 'update') {
+            payload.slot = entry.slot;
+            payload.bucket = entry.bucket;
+            payload.sentence = entry.sentence;
+            payload.dayStart = entry.dayStart;
+            if (action === 'log') payload.ts = entry._ts || isoWithOffset(new Date());
+          }
+
+          return post(payload)
+            .catch(function () { return { ok: false, error: 'no connection' }; })
+            .then(function (res) {
+              if (!res || !res.ok) { renderSyncStatus(res && res.error); return; }
+              if (action === 'delete') {
+                return dbDelete(entry.id).then(function () { renderSyncStatus(); return step(); });
+              }
+              entry._synced = true;
+              entry._pendingAction = null;
+              return dbPut(entry).then(function () { renderSyncStatus(); return step(); });
+            });
+        });
+      }
+      return step().then(
+        function () { syncing = false; },
+        function () { syncing = false; }
+      );
+    }
+
+    /** Migrate any leftover localStorage queue entries into IndexedDB (one-time). */
+    function migrateOldQueue() {
+      var raw;
+      try { raw = JSON.parse(localStorage.getItem(LS.queue) || '[]'); } catch (e) { raw = []; }
+      if (!Array.isArray(raw) || !raw.length) return Promise.resolve();
+      var chain = Promise.resolve();
+      raw.forEach(function (payload) {
+        chain = chain.then(function () {
+          return dbPut({
+            id: payload.id,
+            slot: payload.slot,
+            bucket: payload.bucket,
+            sentence: payload.sentence,
+            dayStart: !!payload.dayStart,
+            _synced: false,
+            _pendingAction: payload.action || 'log',
+            _ts: payload.ts
+          });
+        });
+      });
+      return chain.then(function () { localStorage.removeItem(LS.queue); });
+    }
+
+    /** Seed IndexedDB from server on first load (when DB is empty). */
+    function seedFromServer() {
+      return dbAll().then(function (all) {
+        if (all.length) return; // already populated
+        return apiGet('action=week&days=14')
+          .catch(function () { return { ok: false }; })
+          .then(function (res) {
+            if (!res || !res.ok || !Array.isArray(res.entries)) return;
+            return dbMergeServerEntries(res.entries);
+          });
+      });
+    }
 
     /* ---------------- theme ---------------- */
 
@@ -557,28 +772,6 @@
         .then(function (t) { try { return JSON.parse(t); } catch (e) { return { ok: false, error: 'unreadable response' }; } });
     }
 
-    /**
-     * Drain oldest first; stop at the first failure and keep the rest. A payload the
-     * server permanently rejects blocks the head of the queue, surfacing as a depth that
-     * never falls with the reason beside it. Visibly stuck beats silently dropped.
-     */
-    function flushQueue() {
-      if (flushing || !localStorage.getItem(LS.url)) return Promise.resolve();
-      if (!getQueue().length) return Promise.resolve();
-      flushing = true;
-      function step() {
-        var pending = getQueue();
-        if (!pending.length) return Promise.resolve();
-        return post(pending[0])
-          .catch(function () { return { ok: false, error: 'no connection' }; })
-          .then(function (res) {
-            if (!res || !res.ok) { renderQueue(res && res.error); return; }
-            pending.shift(); setQueue(pending); renderQueue();
-            return step();
-          });
-      }
-      return step().then(function () { flushing = false; }, function () { flushing = false; });
-    }
 
     /* ---------------- render ---------------- */
 
@@ -608,10 +801,11 @@
       return 'last logged  ' + h12(d) + ' ' + mer(d);
     }
 
-    function renderQueue(reason) {
-      var n = getQueue().length;
-      if (!n) { setSub(); return; }
-      setSub('queued ' + n + (reason ? ' · ' + reason : '') + ' · will retry', true);
+    function renderSyncStatus(reason) {
+      dbUnsyncedCount().then(function (n) {
+        if (!n) { setSub(); return; }
+        setSub('syncing ' + n + (reason ? ' · ' + reason : '') + ' · will retry', true);
+      }).catch(function () { setSub(); });
     }
 
     function setStatus(cls, text) { el('status').className = cls || ''; el('status').textContent = text || ''; }
@@ -674,36 +868,27 @@
       if (!state.bucket || !sentence) return;
 
       state.sending = true; refreshSend();
-      setStatus('', 'sending…');
 
-      var payload = {
-        token: localStorage.getItem(LS.token) || '',
-        action: 'log',
-        id: newId(),
-        slot: isoWithOffset(state.slotDate || lastClosedBlock()),
-        ts: state.ts || isoWithOffset(new Date()),
-        bucket: state.bucket,
-        sentence: sentence,
-        dayStart: state.dayStart
+      var id = newId();
+      var slot = isoWithOffset(state.slotDate || lastClosedBlock());
+      var ts = state.ts || isoWithOffset(new Date());
+      var entry = {
+        id: id, slot: slot, bucket: state.bucket,
+        sentence: sentence, dayStart: state.dayStart,
+        _synced: false, _pendingAction: 'log', _ts: ts
       };
-      var loggedTs = payload.ts;
 
-      post(payload)
-        .catch(function () { return { ok: false, error: 'no connection' }; })
-        .then(function (res) {
-          state.sending = false;
-          localStorage.setItem(LS.last, loggedTs);
-          if (res && res.ok) {
-            resetForm();
-            setStatus('ok', res.dedup ? 'already recorded' : 'logged');
-            flushQueue();
-          } else {
-            var q = getQueue(); q.push(payload); setQueue(q);
-            resetForm();
-            setStatus('queued', 'queued · ' + ((res && res.error) || 'no connection'));
-            renderQueue(res && res.error);
-          }
-        });
+      dbPut(entry).then(function () {
+        state.sending = false;
+        localStorage.setItem(LS.last, ts);
+        resetForm();
+        setStatus('ok', 'logged');
+        syncQueue(); // fire-and-forget background sync
+      }).catch(function () {
+        // IndexedDB write failed (extremely rare) — fall back to direct post
+        state.sending = false;
+        setStatus('err', 'local save failed');
+      });
     }
 
     /* ---------------- setup ---------------- */
@@ -720,8 +905,9 @@
       el('setup').classList.add('hide');
       el('capture').classList.remove('hide');
       resetForm();
-      renderQueue();
-      flushQueue();
+      migrateOldQueue()
+        .then(function () { return seedFromServer(); })
+        .then(function () { renderSyncStatus(); syncQueue(); });
     }
 
     function saveSetup() {
@@ -778,18 +964,42 @@
       if (v === 'today') loadToday(); else loadWeek();
     }
 
+    /**
+     * Local-first: read from IndexedDB → render instantly → refresh from server in background.
+     * Replicates the server's currentDaySlice_ on the client: find the last day_start tick
+     * in slot-sorted entries, or fall back to an 18h window.
+     */
+    function todaySlice(all) {
+      // exclude entries pending delete
+      var live = all.filter(function (e) { return e._pendingAction !== 'delete'; });
+      var sorted = live.slice().sort(function (a, b) { return (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0); });
+      for (var i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i].dayStart) return sorted.slice(i);
+      }
+      var cutoff = Date.now() - BACK_LIMIT_HOURS * HOUR;
+      return sorted.filter(function (e) { return Date.parse(e.slot) >= cutoff; });
+    }
+
     function loadToday() {
-      el('rail').innerHTML = '<div class="railMsg">loading…</div>';
+      // instant render from IndexedDB
+      dbAll().then(function (all) {
+        drawer.entries = todaySlice(all);
+        renderRail();
+      }).catch(function () {
+        el('rail').innerHTML = '<div class="railMsg">local read failed</div>';
+      });
+
+      // background refresh from server (stale-while-revalidate for data)
       apiGet('action=today')
-        .catch(function () { return { ok: false, error: 'no connection' }; })
+        .catch(function () { return { ok: false }; })
         .then(function (res) {
-          if (!res || !res.ok) {
-            el('rail').innerHTML = '<div class="railMsg">could not load · ' +
-              esc((res && res.error) || 'offline') + '</div>';
-            return;
-          }
-          drawer.entries = Array.isArray(res.entries) ? res.entries : [];
-          renderRail();
+          if (!res || !res.ok || !Array.isArray(res.entries)) return;
+          dbMergeServerEntries(res.entries).then(function () {
+            return dbAll();
+          }).then(function (all) {
+            drawer.entries = todaySlice(all);
+            renderRail();
+          });
         });
     }
 
@@ -916,22 +1126,35 @@
       });
       saveBtn.addEventListener('click', function () {
         saveBtn.disabled = true; saveBtn.textContent = 'saving…';
-        post({ token: localStorage.getItem(LS.token) || '', action: 'update',
-          id: id, slot: e.slot, bucket: chosen, sentence: ta.value.trim(), dayStart: day })
-          .catch(function () { return { ok: false, error: 'no connection' }; })
-          .then(function (res) {
-            if (res && res.ok) { drawer.openEditId = null; loadToday(); }
-            else { saveBtn.disabled = false; saveBtn.textContent = 'save'; saveBtn.classList.add('err'); }
-          });
+        dbGet(id).then(function (existing) {
+          var updated = {
+            id: id, slot: e.slot, bucket: chosen,
+            sentence: ta.value.trim(), dayStart: day,
+            _synced: false, _pendingAction: 'update',
+            _ts: (existing && existing._ts) || null
+          };
+          return dbPut(updated);
+        }).then(function () {
+          drawer.openEditId = null;
+          loadToday();
+          syncQueue();
+        }).catch(function () {
+          saveBtn.disabled = false; saveBtn.textContent = 'save'; saveBtn.classList.add('err');
+        });
       });
       box.querySelector('.del').addEventListener('click', function () {
         var delBtn = box.querySelector('.del'); delBtn.textContent = 'deleting…';
-        post({ token: localStorage.getItem(LS.token) || '', action: 'delete', id: id })
-          .catch(function () { return { ok: false, error: 'no connection' }; })
-          .then(function (res) {
-            if (res && res.ok) { drawer.openEditId = null; loadToday(); }
-            else { delBtn.textContent = 'delete'; }
-          });
+        dbGet(id).then(function (existing) {
+          if (existing) {
+            existing._synced = false;
+            existing._pendingAction = 'delete';
+            return dbPut(existing);
+          }
+        }).then(function () {
+          drawer.openEditId = null;
+          loadToday();
+          syncQueue();
+        }).catch(function () { delBtn.textContent = 'delete'; });
       });
       paint();
       ta.focus();
@@ -945,16 +1168,30 @@
     var DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
     function loadWeek() {
-      el('week').innerHTML = '<div class="railMsg">loading…</div>';
+      var cutoff = Date.now() - 7 * 24 * HOUR;
+      function weekEntries(all) {
+        return all.filter(function (e) {
+          return e._pendingAction !== 'delete' && Date.parse(e.slot) >= cutoff;
+        });
+      }
+
+      // instant render from IndexedDB
+      dbAll().then(function (all) {
+        renderWeek(weekEntries(all));
+      }).catch(function () {
+        el('week').innerHTML = '<div class="railMsg">local read failed</div>';
+      });
+
+      // background refresh from server
       apiGet('action=week&days=7')
-        .catch(function () { return { ok: false, error: 'no connection' }; })
+        .catch(function () { return { ok: false }; })
         .then(function (res) {
-          if (!res || !res.ok) {
-            el('week').innerHTML = '<div class="railMsg">could not load · ' +
-              esc((res && res.error) || 'offline') + '</div>';
-            return;
-          }
-          renderWeek(Array.isArray(res.entries) ? res.entries : []);
+          if (!res || !res.ok || !Array.isArray(res.entries)) return;
+          dbMergeServerEntries(res.entries).then(function () {
+            return dbAll();
+          }).then(function (all) {
+            renderWeek(weekEntries(all));
+          });
         });
     }
 
@@ -1045,7 +1282,7 @@
       if (e.key === 'Escape' && el('drawer').classList.contains('open')) closeDrawer();
     });
 
-    window.addEventListener('online', function () { flushQueue(); });
+    window.addEventListener('online', function () { syncQueue(); });
 
     if (localStorage.getItem(LS.url) && localStorage.getItem(LS.token)) showCapture();
     else showSetup();

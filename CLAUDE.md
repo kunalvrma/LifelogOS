@@ -24,12 +24,14 @@ table, it's dead. Do not add fields that ask the user to classify facts.
 ```
 MacroDroid (silent hourly ping, holds no state)
    → HUD  (this repo: a single-file PWA on GitHub Pages)
+   → IndexedDB  (local source of truth — instant reads/writes)
+   → background sync  (fire-and-forget POST to server)
    → Apps Script Web App  (Code.gs, the /exec endpoint)
    → Google Sheet  (one tab, "Log", six columns)
 ```
 
-Stack: vanilla HTML/CSS/JS (no build step, no framework), Google Apps Script, Google Sheets,
-MacroDroid. Nothing compiles; what you see is what ships.
+Stack: vanilla HTML/CSS/JS (no build step, no framework), IndexedDB, Google Apps Script,
+Google Sheets, MacroDroid. Nothing compiles; what you see is what ships.
 
 ## Repo map
 
@@ -37,7 +39,7 @@ MacroDroid. Nothing compiles; what you see is what ships.
 |---|---|
 | `SPEC.md` | **Read first.** The philosophy and the *why* behind every decision. The durable brain of the project. |
 | `Code.gs` | Apps Script backend: validate → dedupe → append/update/delete. Pasted into the Apps Script editor; committed here for version control. Holds **no** secrets. |
-| `index.html` | The entire HUD — capture screen, hour-block stepper, Today/Week drawer, first-run config, offline retry queue, theme toggle. One file, inline CSS/JS. |
+| `index.html` | The entire HUD — capture screen, hour-block stepper, Today/Week drawer, first-run config, IndexedDB offline-first data layer with background sync, theme toggle. One file, inline CSS/JS. |
 | `manifest.webmanifest` | PWA installability + standalone display. |
 | `sw.js` | Service worker: cache-first shell so the HUD opens instantly and offline. **Network-only** for the `/exec` endpoint — a cached POST response would be catastrophic. |
 | `icon-192.png`, `icon-512.png` | Home-screen icons. |
@@ -87,6 +89,11 @@ derived summary tab and it silently rotted for three months. Don't store derived
    Properties as `LIFELOG_TOKEN`; the HUD asks for the `/exec` URL + token once and keeps them
    in `localStorage`, verified against `?action=health` before saving. Never commit a `/exec`
    URL or token. The secrets scan in `tests/run.sh` is the pre-push gate — run it every time.
+9. **IndexedDB is the local source of truth.** All writes go to IndexedDB first (instant), then
+   sync to Google Sheets via background `syncQueue()`. Entries carry `_synced` (boolean) and
+   `_pendingAction` (`'log'`/`'update'`/`'delete'`) fields. Reads always hit IndexedDB first;
+   server data refreshes in background and is merged without overwriting unsynced local edits.
+   The server-side dedupe (invariant 5) makes retried syncs safe.
 
 ## Endpoints (the wire contract)
 
