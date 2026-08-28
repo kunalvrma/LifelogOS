@@ -56,6 +56,8 @@
       --wanted: #a4650a;
       --drifted: #5d646e;
     }
+    /* icon-192.png has a dark background — invert it on the light theme */
+    [data-theme="light"] .iconbtn img { filter: invert(1); }
 
     html, body {
       height: 100%;
@@ -100,7 +102,7 @@
         border-color var(--dur-fast) var(--ease-standard);
     }
     .iconbtn:hover { color: var(--text); }
-    .iconbtn img { width: 26px; height: 26px; border-radius: 50%; }
+    .iconbtn img { width: 32px; height: 32px; border-radius: 8px; }
     .iconbtn svg { width: 20px; height: 20px; }
 
     /* ---------- stepper ---------- */
@@ -452,6 +454,9 @@
 
   <!-- ================= first run ================= -->
   <section id="setup" class="hide">
+    <header>
+      <span class="brand">LIFELOG</span>
+    </header>
     <h1>Connect the sheet</h1>
     <p>Paste the Apps Script Web App URL and the token. Both stay on this device
       &mdash; nothing is committed to the repo.</p>
@@ -1097,14 +1102,16 @@
 
     function openDrawer() {
       el('scrim').classList.add('open');
+      el('drawer').classList.remove('closing');
       el('drawer').classList.add('open');
       el('drawer').setAttribute('aria-hidden', 'false');
       setView(drawer.view);
     }
     function closeDrawer() {
-      el('scrim').classList.remove('open');
+      el('drawer').classList.add('closing');
       el('drawer').classList.remove('open');
       el('drawer').setAttribute('aria-hidden', 'true');
+      el('scrim').classList.remove('open');
       drawer.openEditId = null;
     }
 
@@ -1425,6 +1432,7 @@
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDayStart(); }
     });
     el('send').addEventListener('click', send);
+    el('setupSave').addEventListener('click', saveSetup);
 
     /* --- left drawer (day/week) --- */
     el('railBtn').addEventListener('click', openDrawer);
@@ -1503,7 +1511,7 @@
     /* --- swipe gestures --- */
     (function () {
       var sx = 0, sy = 0, tracking = false;
-      var EDGE = 30, MIN_X = 50, MAX_Y = 100;
+      var MIN_X = 50, MAX_Y = 80;
 
       document.addEventListener('touchstart', function (e) {
         var t = e.touches[0];
@@ -1519,17 +1527,13 @@
         var drawerOpen = el('drawer').classList.contains('open');
         var menuOpen   = el('menu').classList.contains('open');
 
-        if (dx > 0 && sx < EDGE && !drawerOpen && !menuOpen) {
-          // right swipe from left edge → open drawer
-          openDrawer();
-        } else if (dx < 0 && drawerOpen) {
-          // left swipe while drawer open → close drawer
+        if (!drawerOpen && !menuOpen) {
+          // nothing open: swipe right → drawer, swipe left → menu
+          if (dx > 0) openDrawer();
+          else openMenu();
+        } else if (drawerOpen && dx < 0) {
           closeDrawer();
-        } else if (dx < 0 && window.innerWidth - sx < EDGE && !menuOpen && !drawerOpen) {
-          // left swipe from right edge → open menu
-          openMenu();
-        } else if (dx > 0 && menuOpen) {
-          // right swipe while menu open → close menu
+        } else if (menuOpen && dx > 0) {
           closeMenu();
         }
       }, { passive: true });
