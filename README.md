@@ -12,7 +12,7 @@ MacroDroid  ──ping──▶  HUD (this repo, GitHub Pages)  ──POST──
 
 | File | What it is |
 |---|---|
-| `index.html` | the whole HUD — capture screen with hour-block stepper, Today/Week drawer, light-dark toggle, first-run config, retry queue |
+| `index.html` | the whole HUD — LIFELOG header, centered hour-block stepper, left Today/Week drawer, right hamburger menu (theme, sync, reset), toast feedback, IndexedDB offline-first layer with background sync |
 | `Code.gs` | paste into the Apps Script editor bound to your Sheet |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | offline shell and home-screen install |
 | `lifelog-ping.macro.json` | import into MacroDroid |
@@ -127,8 +127,8 @@ GET  /exec?action=week&token=…&days=7                -> {ok:true, slot, entrie
 Sent as `text/plain` under `mode:'cors'` — a safelisted content type, so no preflight, which
 Apps Script handles badly. **Never `no-cors`:** it makes the response unreadable, and that is
 precisely how v1 showed a green checkmark over writes that never landed. Every
-non-`{"ok":true}` answer, including an HTML error page, queues the entry in `localStorage`
-and says so on screen. Nothing is ever dropped quietly.
+non-`{"ok":true}` answer, including an HTML error page, queues the entry in IndexedDB
+and retries in the background. Nothing is ever dropped quietly.
 
 `id` is an idempotency key, held six hours in `CacheService` **and** checked against the
 Sheet inside a lock before every append — so a retry after an ambiguous failure cannot
@@ -136,7 +136,8 @@ double-write even if it arrives after the cache has expired.
 
 ## Reading it
 
-Open the app, tap **DAY**. **Today** is an hour rail for the current logical day — tap a
-filled hour to edit or delete it, tap an empty hour to log it. **Week** is the Sunday review:
-seven days of Needed/Wanted/Drifted balance with the sentences underneath. The sentences are
-the mirror; numbers only tell you where to look.
+Open the app, tap the **app icon** (top-right). **Today** is an hour rail for the current logical
+day — tap a filled hour to edit or delete it, tap an empty hour to log it. **Week** is the Sunday
+review: seven days of Needed/Wanted/Drifted balance with the sentences underneath. The sentences
+are the mirror; numbers only tell you where to look. Tap the **☰ hamburger** for theme, sync
+status, and reset.

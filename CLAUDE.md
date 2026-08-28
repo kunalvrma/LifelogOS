@@ -39,7 +39,7 @@ Google Sheets, MacroDroid. Nothing compiles; what you see is what ships.
 |---|---|
 | `SPEC.md` | **Read first.** The philosophy and the *why* behind every decision. The durable brain of the project. |
 | `Code.gs` | Apps Script backend: validate → dedupe → append/update/delete. Pasted into the Apps Script editor; committed here for version control. Holds **no** secrets. |
-| `index.html` | The entire HUD — capture screen, hour-block stepper, Today/Week drawer, first-run config, IndexedDB offline-first data layer with background sync, theme toggle. One file, inline CSS/JS. |
+| `index.html` | The entire HUD — LIFELOG header with app-icon (opens left Today/Week drawer) and hamburger icon (opens right menu: theme toggle, sync status, reset config), centered hour-block stepper, toast feedback system, IndexedDB offline-first data layer with background sync, light/dark theme. One file, inline CSS/JS. |
 | `manifest.webmanifest` | PWA installability + standalone display. |
 | `sw.js` | Service worker: cache-first shell so the HUD opens instantly and offline. **Network-only** for the `/exec` endpoint — a cached POST response would be catastrophic. |
 | `icon-192.png`, `icon-512.png` | Home-screen icons. |
