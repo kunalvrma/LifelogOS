@@ -1472,13 +1472,15 @@
 
     el('menuSync').addEventListener('click', function () {
       el('syncDetail').textContent = 'syncing…';
+      syncing = false; // force-reset in case a previous sync got stuck
       syncQueue().then(function () {
         return dbUnsyncedCount();
       }).then(function (n) {
         var last = localStorage.getItem(LS.lastSync);
         el('syncDetail').textContent = (n ? n + ' pending · ' : '') + (last ? relTime(last) : 'never');
         showToast(n ? 'synced partially · ' + n + ' remaining' : 'fully synced', n ? 'warn' : 'ok');
-      }).catch(function () {
+      }).catch(function (err) {
+        console.error('sync error:', err);
         el('syncDetail').textContent = 'sync failed';
         showToast('sync failed', 'err');
       });
