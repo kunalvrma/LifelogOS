@@ -301,9 +301,13 @@
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 20px;
     }
-    .menuHead h2 {
-      font-family: var(--mono); font-size: 12px; font-weight: 600;
-      letter-spacing: .12em; color: var(--muted);
+    .menuBrand {
+      font-family: var(--mono); font-size: 14px; font-weight: 600;
+      letter-spacing: .08em; display: flex; align-items: baseline; gap: 8px;
+    }
+    .menuVer {
+      font-size: 10px; color: var(--muted); font-weight: 400; letter-spacing: 0;
+      background: var(--surface); padding: 2px 6px; border-radius: 4px;
     }
     .menuHead .close {
       appearance: none; background: none; border: 0; color: var(--muted);
@@ -545,7 +549,10 @@
   <!-- ================= hamburger menu (RIGHT) ================= -->
   <aside id="menu" aria-hidden="true">
     <div class="menuHead">
-      <h2>MENU</h2>
+      <div class="menuBrand">
+        <span>LIFELOG</span>
+        <span class="menuVer">v7</span>
+      </div>
       <button class="close" id="menuClose" type="button" aria-label="close">&times;</button>
     </div>
     <div class="menuItem" id="menuTheme">
