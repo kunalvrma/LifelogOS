@@ -11,7 +11,7 @@
  * or data-contract change, so the HUD and the server flip together on the next open.
  */
 
-var CACHE = 'lifelog-v4';
+var CACHE = 'lifelog-v5';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
