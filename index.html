@@ -693,27 +693,15 @@
     }
 
     function dbUnsynced() {
-      return openDB().then(function (db) {
-        return new Promise(function (resolve, reject) {
-          var tx = db.transaction(STORE, 'readonly');
-          var idx = tx.objectStore(STORE).index('by-synced');
-          var req = idx.getAll(false);
-          req.onsuccess = function () { resolve(req.result || []); };
-          req.onerror = function () { reject(req.error); };
-        });
+      return dbAll().then(function (all) {
+        return all.filter(function (e) { return !e._synced; });
       });
     }
 
     /** Count entries pending sync */
     function dbUnsyncedCount() {
-      return openDB().then(function (db) {
-        return new Promise(function (resolve, reject) {
-          var tx = db.transaction(STORE, 'readonly');
-          var idx = tx.objectStore(STORE).index('by-synced');
-          var req = idx.count(false);
-          req.onsuccess = function () { resolve(req.result); };
-          req.onerror = function () { reject(req.error); };
-        });
+      return dbAll().then(function (all) {
+        return all.filter(function (e) { return !e._synced; }).length;
       });
     }
 
