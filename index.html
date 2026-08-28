@@ -774,7 +774,15 @@
           return post(payload)
             .catch(function () { return { ok: false, error: 'no connection' }; })
             .then(function (res) {
-              if (!res || !res.ok) { renderSyncStatus(res && res.error); return; }
+              if (!res || !res.ok) {
+                // self-heal: server says 'not found' on update → entry never synced, retry as log
+                if (action === 'update' && res && /not found/i.test(res.error)) {
+                  entry._pendingAction = 'log';
+                  entry._ts = entry._ts || isoWithOffset(new Date());
+                  return dbPut(entry).then(function () { return step(); });
+                }
+                renderSyncStatus(res && res.error); return;
+              }
               if (action === 'delete') {
                 return dbDelete(entry.id).then(function () { renderSyncStatus(); return step(); });
               }
@@ -1013,7 +1021,8 @@
           entry = {
             id: existing.id, slot: slot, bucket: state.bucket,
             sentence: sentence, dayStart: state.dayStart,
-            _synced: false, _pendingAction: 'update',
+            _synced: false,
+            _pendingAction: existing._synced ? 'update' : (existing._pendingAction || 'log'),
             _ts: existing._ts || ts
           };
         } else {
