@@ -26,12 +26,29 @@ effort with no self-knowledge yield. It got used nine days out of a hundred and 
 
 Every entry carries exactly one classification: **Needed / Wanted / Drifted**.
 
-This is borrowed from GYST, where the category encodes *intent, not fact*. Noodles bought
-because I skipped lunch are Groceries — survival. The same noodles bought while lunch sits
-in my bag are Dining — a want. The classification *is* the intervention; the dashboard is
-a byproduct.
+The bucket encodes *intent, not activity*. It describes the hour's relationship to your
+agency — not whether the choice was good, not whether you should have made it. The verdict
+on quality belongs to the Sunday review. Capture time only asks: where did your attention
+go, and did you send it there?
 
-Two rules keep it alive:
+### Canonical definitions (locked)
+
+**Needed** — The hour was not freely yours to allocate. You chose it, but you would have
+chosen differently if you could. Life, obligation, survival, or a social/relational cost
+you couldn't absorb made it effectively non-optional. Commute, meals, medical, a friend
+who needed you, a work obligation you couldn't skip.
+
+**Wanted** — You chose to be here, with awareness. You sat down and decided this was the
+hour's activity. Gaming, watching a series, deep work, a long call, deliberate rest —
+all Wanted if you consciously sent your attention there. The quality of the choice does
+not matter at capture time. The fact of the choice does.
+*The test: if you could rewind and choose freely again, would you make the same call?*
+
+**Drifted** — It happened to you. Time passed without a real decision being made.
+You opened one thing and surfaced somewhere else. Attention wandered and you followed it.
+The absence of a deliberate choice is what marks it as Drifted — not the activity itself.
+
+### Two rules that keep it alive
 
 **The bucket describes the hour, not the activity.** Client work at 2pm is Needed. The
 identical client work at 11pm because I avoided it all day is Drifted. The moment it
@@ -43,8 +60,16 @@ here the author is also the only audience, so I would be lying to the one person
 exists for. "Drifted" describes what happened — attention leaked — without passing
 sentence. Neutral buckets are load-bearing for honesty.
 
-Also: at ping time the verdict often hasn't arrived yet. Wanted-vs-Wasted asks me to
-judge an hour I'm still standing in. Hesitation is what killed v1.
+### The gaming weekend problem
+
+Choosing to game for three hours when you could be working on bigger goals: **Wanted.**
+You sat down and decided to game. That choice may or may not have been wise — that is a
+Sunday question. At capture time, the only question is whether you sent your attention
+there on purpose. You did. Log it honestly and move on.
+
+The conflict only arises when "worth choosing" is confused for "consciously chosen." They
+are not the same thing. Wanted never asks you to endorse the choice. It only asks whether
+you made one.
 
 ## Days don't follow the calendar
 
