@@ -105,36 +105,57 @@
     .iconbtn img { width: 32px; height: 32px; border-radius: 8px; }
     .iconbtn svg { width: 20px; height: 20px; }
 
-    /* ---------- stepper ---------- */
+    /* ---------- capture body (thread + form) ---------- */
 
-    .stepper {
-      display: flex; align-items: center; gap: 8px;
-      justify-content: center; margin-bottom: 10px;
+    #captureBody { display: flex; flex: 1 1 auto; gap: 0; min-height: 0; }
+
+    #thread {
+      flex: 0 0 44px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      border-radius: 12px 0 0 12px;
+      display: flex; flex-direction: column;
+      align-items: center; padding: 6px 0;
+      overflow-y: auto;
+    }
+    .thl {
+      font-family: var(--mono);
+      font-size: 9px; font-weight: 600; letter-spacing: .02em;
+      color: var(--muted); line-height: 1; padding: 3px 0;
+      flex: 0 0 auto; user-select: none;
+    }
+    .ths {
+      flex: 1 1 0; min-height: 16px;
+      width: 3px; background: var(--border);
+      border-radius: 1.5px;
+      position: relative; cursor: pointer;
+      transition: width .1s, background .1s;
+    }
+    .ths::before {
+      content: ''; position: absolute;
+      top: -3px; bottom: -3px; left: -20px; right: -20px;
+    }
+    .ths.logged { background: var(--c, var(--muted)); width: 4px; }
+    .ths.selected { background: var(--text); width: 4px; }
+    .ths.logged.selected { outline: 2px solid var(--text); outline-offset: 2px; }
+    .ths.empty { opacity: .35; }
+
+    #formArea {
+      flex: 1 1 auto; display: flex; flex-direction: column;
+      padding-left: 14px; min-width: 0;
     }
 
-    .step {
-      appearance: none; flex: 0 0 auto;
-      width: 44px; height: 44px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; color: var(--text);
-      font-family: var(--mono); font-size: 16px; line-height: 1;
-      cursor: pointer; transition: border-color var(--dur-fast) var(--ease-standard),
-        opacity var(--dur-fast) var(--ease-standard);
-    }
-    .step:disabled { opacity: .25; cursor: default; }
-
-    #block {
-      text-align: center; padding: 4px 12px;
+    #rangeLabel {
+      text-align: center; padding: 4px 0 2px;
       font-family: var(--mono); font-weight: 600;
-      font-size: 18px; letter-spacing: .04em;
-      color: var(--text);
+      font-size: 16px; letter-spacing: .04em; color: var(--text);
     }
-    #blockDate {
+    #rangeLabelDate {
       display: block;
       font-size: 10px; font-weight: 500; letter-spacing: .16em;
       color: var(--muted); margin-bottom: 2px;
     }
-    #block.adjusted #blockDate::after { content: " · EDITED"; color: var(--wanted); }
+    #rangeLabel.adjusted #rangeLabelDate::after { content: " · ADJUSTED"; color: var(--wanted); }
 
     #sub {
       font-family: var(--mono);
@@ -494,39 +515,40 @@
       </div>
     </header>
 
-    <div class="stepper">
-      <button class="step" id="stepBack" type="button" aria-label="earlier hour">&#9664;</button>
-      <div id="block"><span id="blockDate">&mdash;</span><span id="blockRange">&mdash;</span></div>
-      <button class="step" id="stepFwd" type="button" aria-label="later hour">&#9654;</button>
+    <div id="captureBody">
+      <div id="thread"></div>
+      <div id="formArea">
+        <div id="rangeLabel"><span id="rangeLabelDate">&mdash;</span><span id="rangeLabelRange">&mdash;</span></div>
+        <div id="sub"></div>
+
+        <div class="buckets">
+          <button class="bucket" id="bNeeded" type="button" aria-pressed="false" data-bucket="Needed">
+            <span class="dot"></span><span>Needed</span>
+            <span class="why">the hour had to happen</span>
+          </button>
+          <button class="bucket" id="bWanted" type="button" aria-pressed="false" data-bucket="Wanted">
+            <span class="dot"></span><span>Wanted</span>
+            <span class="why">you chose to be here</span>
+          </button>
+          <button class="bucket" id="bDrifted" type="button" aria-pressed="false" data-bucket="Drifted">
+            <span class="dot"></span><span>Drifted</span>
+            <span class="why">attention went somewhere I didn't send it</span>
+          </button>
+        </div>
+
+        <textarea id="sentence" rows="3" placeholder="what was this hour about?"
+          autocapitalize="sentences" spellcheck="true"></textarea>
+
+        <div id="dayStartRow" role="checkbox" tabindex="0" aria-checked="false">
+          <span class="box"></span>
+          <span class="label">First entry of the day</span>
+          <span class="note">STARTS A NEW DAY</span>
+        </div>
+
+        <div class="spacer"></div>
+        <button id="send" type="button" disabled>Log the hour</button>
+      </div>
     </div>
-    <div id="sub"></div>
-
-    <div class="buckets">
-      <button class="bucket" id="bNeeded" type="button" aria-pressed="false" data-bucket="Needed">
-        <span class="dot"></span><span>Needed</span>
-        <span class="why">the hour had to happen</span>
-      </button>
-      <button class="bucket" id="bWanted" type="button" aria-pressed="false" data-bucket="Wanted">
-        <span class="dot"></span><span>Wanted</span>
-        <span class="why">you chose to be here</span>
-      </button>
-      <button class="bucket" id="bDrifted" type="button" aria-pressed="false" data-bucket="Drifted">
-        <span class="dot"></span><span>Drifted</span>
-        <span class="why">attention went somewhere I didn't send it</span>
-      </button>
-    </div>
-
-    <textarea id="sentence" rows="3" placeholder="what was this hour about?"
-      autocapitalize="sentences" spellcheck="true"></textarea>
-
-    <div id="dayStartRow" role="checkbox" tabindex="0" aria-checked="false">
-      <span class="box"></span>
-      <span class="label">First entry of the day</span>
-      <span class="note">STARTS A NEW DAY</span>
-    </div>
-
-    <div class="spacer"></div>
-    <button id="send" type="button" disabled>Log the hour</button>
   </section>
 
   <!-- ================= toast ================= -->
@@ -582,12 +604,13 @@
     var DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     var MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     var HOUR = 3600000;
-    var BACK_LIMIT_HOURS = 18;   // how far the stepper walks back; the server guards too
+    var BACK_LIMIT_HOURS = 18;   // how far back the thread extends; the server guards too
 
-    // slotDate: a Date pinned to the top of the block being accounted for.
+    // rangeStart/rangeEnd: Dates pinned to the top of the selected block(s).
+    //   Single hour: rangeStart === rangeEnd. Multi-hour: contiguous range.
     // ts: logged_at, the moment of composing, captured at first interaction.
-    // touched: once true, the block stops auto-advancing with the clock.
-    var state = { bucket: null, slotDate: null, ts: null, dayStart: false, touched: false, sending: false };
+    // touched: once true, the selection stops auto-advancing with the clock.
+    var state = { bucket: null, rangeStart: null, rangeEnd: null, ts: null, dayStart: false, touched: false, sending: false };
     var clockTimer = null;
 
     function el(id) { return document.getElementById(id); }
@@ -906,16 +929,136 @@
 
     /* ---------------- render ---------------- */
 
-    function renderBlock() {
-      if (!state.slotDate) state.slotDate = lastClosedBlock();
-      el('blockDate').textContent = dateLabel(state.slotDate);
-      el('blockRange').textContent = rangeLabel(state.slotDate);
-      el('block').classList.toggle('adjusted', state.touched);
-      // bounds: can't go past the in-progress block, can't walk back past the limit
-      var maxMs = floorHour(new Date()).getTime();
-      var minMs = maxMs - BACK_LIMIT_HOURS * HOUR;
-      el('stepFwd').disabled = state.slotDate.getTime() >= maxMs;
-      el('stepBack').disabled = state.slotDate.getTime() <= minMs;
+    var BUCKET_CLR = { Needed: '--needed', Wanted: '--wanted', Drifted: '--drifted' };
+    var threadEntries = []; // cached for selection checks
+
+    /** Short hour label: "4p", "12a" */
+    function hLabel(d) { return h12(d) + (d.getHours() < 12 ? 'a' : 'p'); }
+
+    /**
+     * Render the vertical timeline thread.
+     * Reads today's entries from IndexedDB, builds hour labels + tappable line segments.
+     */
+    function renderThread() {
+      dbAll().then(function (all) {
+        threadEntries = todaySlice(all);
+        paintThread();
+      }).catch(function () { el('thread').innerHTML = ''; });
+    }
+
+    function paintThread() {
+      var entries = threadEntries.slice().sort(function (a, b) {
+        return Date.parse(a.slot) - Date.parse(b.slot);
+      });
+      var bySlot = {};
+      entries.forEach(function (e) { if (e._pendingAction !== 'delete') bySlot[e.slot] = e; });
+
+      // hour range: current in-progress hour down to BACK_LIMIT_HOURS or day_start
+      var nowMs = floorHour(new Date()).getTime();
+      var firstMs = entries.length
+        ? Math.max(floorHour(new Date(entries[0].slot)).getTime(), nowMs - BACK_LIMIT_HOURS * HOUR)
+        : nowMs - 3 * HOUR;
+      if (firstMs > nowMs) firstMs = nowMs;
+      if ((nowMs - firstMs) / HOUR > 24) firstMs = nowMs - 24 * HOUR;
+
+      // selected range
+      var selStart = state.rangeStart ? state.rangeStart.getTime() : -1;
+      var selEnd = state.rangeEnd ? state.rangeEnd.getTime() : -1;
+
+      var html = '';
+      // top label (current hour boundary)
+      html += '<span class="thl">' + hLabel(new Date(nowMs + HOUR)) + '</span>';
+
+      // segments from newest to oldest
+      for (var ms = nowMs; ms >= firstMs; ms -= HOUR) {
+        var d = new Date(ms);
+        var key = isoWithOffset(d);
+        var e = bySlot[key];
+        var cls = 'ths';
+        var style = '';
+        if (e) {
+          cls += ' logged';
+          var cv = BUCKET_CLR[e.bucket];
+          if (cv) style = ' style="--c:var(' + cv + ')"';
+        } else {
+          cls += ' empty';
+        }
+        if (ms >= selStart && ms <= selEnd) cls += ' selected';
+
+        html += '<div class="' + cls + '" data-ms="' + ms + '"' + style + '></div>';
+        html += '<span class="thl">' + hLabel(d) + '</span>';
+      }
+
+      el('thread').innerHTML = html;
+
+      // wire segment taps via delegation
+      el('thread').onclick = function (ev) {
+        var seg = ev.target.closest('.ths');
+        if (!seg) return;
+        var ms = Number(seg.dataset.ms);
+        if (isNaN(ms)) return;
+        threadSelect(new Date(ms));
+      };
+    }
+
+    /**
+     * Handle a tap on a thread segment.
+     * First tap: select that single hour.
+     * Second tap: select contiguous range from first to second.
+     * Third tap (or tap with range active): start fresh with that single hour.
+     * Tap already-selected single hour: deselect → revert to default.
+     */
+    function threadSelect(d) {
+      touchTs();
+      var ms = d.getTime();
+
+      if (state.rangeStart && state.rangeEnd &&
+          state.rangeStart.getTime() === state.rangeEnd.getTime()) {
+        // single hour is selected
+        if (state.rangeStart.getTime() === ms) {
+          // tapped the same hour — deselect, revert to default
+          state.touched = false;
+          state.rangeStart = lastClosedBlock();
+          state.rangeEnd = state.rangeStart;
+        } else {
+          // tapped a different hour — create range
+          state.touched = true;
+          var a = state.rangeStart.getTime(), b = ms;
+          state.rangeStart = new Date(Math.min(a, b));
+          state.rangeEnd = new Date(Math.max(a, b));
+        }
+      } else {
+        // no selection or range active — start fresh with single hour
+        state.touched = true;
+        state.rangeStart = d;
+        state.rangeEnd = d;
+      }
+
+      renderRangeLabel();
+      paintThread();
+      refreshSend();
+      el('sentence').focus();
+    }
+
+    function renderRangeLabel() {
+      if (!state.rangeStart) state.rangeStart = lastClosedBlock();
+      if (!state.rangeEnd) state.rangeEnd = state.rangeStart;
+      var start = state.rangeStart, end = state.rangeEnd;
+      el('rangeLabelDate').textContent = dateLabel(start);
+      el('rangeLabel').classList.toggle('adjusted', state.touched);
+
+      if (start.getTime() === end.getTime()) {
+        // single hour
+        el('rangeLabelRange').textContent = rangeLabel(start);
+        el('send').textContent = 'Log the hour';
+      } else {
+        // multi-hour range
+        var endBlock = new Date(end.getTime() + HOUR);
+        var left = mer(start) === mer(endBlock) ? String(h12(start)) : h12(start) + ' ' + mer(start);
+        var hrs = Math.round((end.getTime() - start.getTime()) / HOUR) + 1;
+        el('rangeLabelRange').textContent = left + ' – ' + h12(endBlock) + ' ' + mer(endBlock) + ' · ' + hrs + ' hrs';
+        el('send').textContent = 'Log ' + hrs + ' hours';
+      }
     }
 
     function setSub(text, warn) {
@@ -953,21 +1096,26 @@
     }
 
     function refreshSend() {
-      el('send').disabled = !state.bucket || !el('sentence').value.trim() || state.sending;
+      el('send').disabled = !state.bucket || !el('sentence').value.trim() || state.sending || !state.rangeStart;
     }
 
     function startClock() {
-      renderBlock(); setSub();
+      renderRangeLabel(); renderThread(); setSub();
       if (clockTimer) clearInterval(clockTimer);
       clockTimer = setInterval(function () {
-        // only advance the default block while the user hasn't chosen one
-        if (!state.touched) { state.slotDate = lastClosedBlock(); renderBlock(); setSub(); }
+        // only advance the default selection while the user hasn't chosen one
+        if (!state.touched) {
+          state.rangeStart = lastClosedBlock();
+          state.rangeEnd = state.rangeStart;
+          renderRangeLabel(); renderThread(); setSub();
+        }
       }, 30000);
     }
 
     function resetForm() {
       state.bucket = null; state.ts = null; state.dayStart = false; state.touched = false;
-      state.slotDate = lastClosedBlock();
+      state.rangeStart = lastClosedBlock();
+      state.rangeEnd = state.rangeStart;
       el('sentence').value = '';
       el('dayStartRow').setAttribute('aria-checked', 'false');
       BUCKET_IDS.forEach(function (id) { el(id).setAttribute('aria-pressed', 'false'); });
@@ -979,16 +1127,6 @@
 
     /** logged_at is locked at the first interaction, so it means "when I composed this". */
     function touchTs() { if (!state.ts) state.ts = isoWithOffset(new Date()); }
-
-    function stepBlock(delta) {
-      touchTs();
-      state.touched = true;                       // manual choice; stop auto-advancing
-      var maxMs = floorHour(new Date()).getTime();
-      var minMs = maxMs - BACK_LIMIT_HOURS * HOUR;
-      var next = state.slotDate.getTime() + delta * HOUR;
-      state.slotDate = new Date(Math.max(minMs, Math.min(maxMs, next)));
-      renderBlock();
-    }
 
     function pickBucket(name) {
       touchTs();
@@ -1007,44 +1145,85 @@
     function send() {
       if (state.sending) return;
       var sentence = el('sentence').value.trim();
-      if (!state.bucket || !sentence) return;
+      if (!state.bucket || !sentence || !state.rangeStart) return;
 
       state.sending = true; refreshSend();
 
-      var slot = isoWithOffset(state.slotDate || lastClosedBlock());
       var ts = state.ts || isoWithOffset(new Date());
+      var start = state.rangeStart || lastClosedBlock();
+      var end = state.rangeEnd || start;
+      var isSingle = start.getTime() === end.getTime();
 
-      // check if an entry already exists at this slot — update it instead of duplicating
+      // compute all slots in the range
+      var slots = [];
+      for (var ms = start.getTime(); ms <= end.getTime(); ms += HOUR) {
+        slots.push(isoWithOffset(new Date(ms)));
+      }
+
       dbAll().then(function (all) {
-        var existing = null;
-        for (var i = 0; i < all.length; i++) {
-          if (all[i].slot === slot && all[i]._pendingAction !== 'delete') {
-            existing = all[i]; break;
+        // map existing entries by slot
+        var bySlot = {};
+        all.forEach(function (e) {
+          if (e._pendingAction !== 'delete') bySlot[e.slot] = e;
+        });
+
+        var toWrite = [];
+
+        if (isSingle) {
+          // single-hour: update-if-exists, create-if-not (preserves old behavior exactly)
+          var slot = slots[0];
+          var existing = bySlot[slot];
+          if (existing) {
+            toWrite.push({
+              id: existing.id, slot: slot, bucket: state.bucket,
+              sentence: sentence, dayStart: state.dayStart,
+              _synced: false,
+              _pendingAction: existing._synced ? 'update' : (existing._pendingAction || 'log'),
+              _ts: existing._ts || ts
+            });
+          } else {
+            toWrite.push({
+              id: newId(), slot: slot, bucket: state.bucket,
+              sentence: sentence, dayStart: state.dayStart,
+              _synced: false, _pendingAction: 'log', _ts: ts
+            });
           }
-        }
-
-        var entry;
-        if (existing) {
-          entry = {
-            id: existing.id, slot: slot, bucket: state.bucket,
-            sentence: sentence, dayStart: state.dayStart,
-            _synced: false,
-            _pendingAction: existing._synced ? 'update' : (existing._pendingAction || 'log'),
-            _ts: existing._ts || ts
-          };
         } else {
-          entry = {
-            id: newId(), slot: slot, bucket: state.bucket,
-            sentence: sentence, dayStart: state.dayStart,
-            _synced: false, _pendingAction: 'log', _ts: ts
-          };
+          // multi-hour: create entries for empty slots, skip logged ones
+          var isFirst = true;
+          slots.forEach(function (slot) {
+            if (!bySlot[slot]) {
+              toWrite.push({
+                id: newId(), slot: slot, bucket: state.bucket,
+                sentence: sentence, dayStart: isFirst && state.dayStart,
+                _synced: false, _pendingAction: 'log', _ts: ts
+              });
+              isFirst = false;
+            }
+          });
         }
 
-        return dbPut(entry).then(function () {
+        if (!toWrite.length) {
+          state.sending = false;
+          showToast('already logged', 'warn');
+          refreshSend();
+          return;
+        }
+
+        // write all entries sequentially
+        var chain = Promise.resolve();
+        toWrite.forEach(function (entry) {
+          chain = chain.then(function () { return dbPut(entry); });
+        });
+
+        return chain.then(function () {
           state.sending = false;
           localStorage.setItem(LS.last, ts);
           resetForm();
-          showToast(existing ? 'updated' : 'logged', 'ok');
+          var msg = toWrite.length === 1
+            ? (isSingle && bySlot[slots[0]] ? 'updated' : 'logged')
+            : 'logged ' + toWrite.length + ' hours';
+          showToast(msg, 'ok');
           syncQueue();
         });
       }).catch(function () {
@@ -1117,6 +1296,7 @@
       el('drawer').setAttribute('aria-hidden', 'true');
       el('scrim').classList.remove('open');
       drawer.openEditId = null;
+      renderThread(); // refresh thread in case entries were edited/deleted
     }
 
     function setView(v) {
@@ -1229,10 +1409,12 @@
       var d = new Date(slotIso);
       if (isNaN(d.getTime())) return;
       closeDrawer();
-      state.slotDate = floorHour(d);
+      state.rangeStart = floorHour(d);
+      state.rangeEnd = state.rangeStart;
       state.touched = true;
       touchTs();
-      renderBlock();
+      renderRangeLabel();
+      paintThread();
       el('sentence').focus();
     }
 
@@ -1424,8 +1606,7 @@
 
     initTheme();
 
-    el('stepBack').addEventListener('click', function () { stepBlock(-1); });
-    el('stepFwd').addEventListener('click', function () { stepBlock(1); });
+
 
     BUCKET_IDS.forEach(function (id) {
       el(id).addEventListener('click', function () { pickBucket(this.dataset.bucket); });
