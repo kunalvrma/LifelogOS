@@ -115,10 +115,12 @@ but describe three different hours. A week later, `logged_at` alone cannot tell 
 each entry was *about*. The intended block is an irreducible fact, not a derivation, so it
 earns a stored column: `hour_slot`.
 
-The capture screen defaults `hour_slot` to the last closed block and lets me step it
-backward (▶◀ in the header, labelled as a range like "4 – 5 PM") to catch up on a block I
-missed. Stepping forward past the block in progress is refused — you can only account for an
-hour that has already begun.
+The capture screen defaults `hour_slot` to the last closed block. A vertical timeline thread
+on the left side of the screen shows hour labels connected by tappable line segments — tap a
+segment to select that hour, tap a second segment to select a contiguous range. Already-logged
+hours are colored by bucket; empty hours are faint. Selecting a range and submitting creates
+one entry per empty slot (same bucket and sentence), skipping already-logged hours. Selecting
+hours past the block in progress is refused — you can only account for hours that have begun.
 
 Two guards live in the write path. The slot is floored to the top of its hour by **string
 surgery on the ISO text, never by date arithmetic** — flooring a `+05:30` instant in UTC
@@ -189,12 +191,13 @@ cannot silently coerce them back into dates and throw the offset away.
 
 ## Capture flow
 
-1. The screen opens already claiming **the last closed block** (e.g. "4 – 5 PM"). Step it
-   back only if I'm catching up on an earlier hour.
+1. The screen opens already selecting **the last closed block** (e.g. "4 – 5 PM") on the
+   timeline thread. Tap a different segment on the thread to catch up on an earlier hour, or
+   tap two segments to select a contiguous range for multi-hour logging.
 2. Optional tick: **first entry of the day**.
 3. One tap: **Needed / Wanted / Drifted**.
 4. One sentence.
-5. Send.
+5. Send. (Multi-hour creates one entry per empty slot in the range, same bucket and sentence.)
 
 The block is a default, not a question — most of the time I never touch it. The bucket tap
 comes *before* the text box. It is the frictionless start that builds momentum, and it
